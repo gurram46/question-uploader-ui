@@ -73,48 +73,39 @@ export const createQuestionPayload = async (form: QuestionForm): Promise<any> =>
     }
   }
   
-  // Create the JSON payload matching backend schema
+  // Create the JSON payload matching backend schema (flat structure)
   const payload: any = {
     subjectName: sanitizeString(form.subjectName),
     topicName: sanitizeString(form.topicName),
     difficultyLevel: form.difficultyLevel,
     questionText: sanitizeString(form.questionText),
+    questionImage: questionImageUrl || '',
   };
   
-  // Add question image if uploaded
-  if (questionImageUrl) {
-    payload.questionImage = questionImageUrl;
-  }
-  
-  // Add options as option1, option2, option3, option4
+  // Add options as flat fields
   for (let i = 0; i < 4; i++) {
     // eslint-disable-next-line security/detect-object-injection
     const option = form.options[i];
-    const optionKey = `option${i + 1}`;
+    const optionNum = i + 1;
     
-    // eslint-disable-next-line security/detect-object-injection
-    payload[optionKey] = {
-      optionText: option?.option_text ? sanitizeString(option.option_text) : '',
-      isCorrect: option?.is_correct || false
-    };
+    // Add option text
+    payload[`option${optionNum}`] = option?.option_text ? sanitizeString(option.option_text) : '';
     
-    // Add option image if exists
+    // Add option correct status
+    payload[`option${optionNum}Correct`] = option?.is_correct || false;
+    
+    // Add option image
     // eslint-disable-next-line security/detect-object-injection
-    if (optionImageUrls[i]) {
-      // eslint-disable-next-line security/detect-object-injection
-      payload[optionKey].optionImage = optionImageUrls[i];
-    }
+    payload[`option${optionNum}Image`] = optionImageUrls[i] || '';
   }
   
-  // Add explanation if exists
-  if (form.explanation && form.explanation.trim()) {
-    payload.explanation = sanitizeString(form.explanation);
-  }
+  // Add explanation (note the spelling 'explaination' as per backend)
+  payload.explaination = form.explanation && form.explanation.trim() 
+    ? sanitizeString(form.explanation) 
+    : '';
   
-  // Add explanation image if uploaded
-  if (explanationImageUrl) {
-    payload.explanationImage = explanationImageUrl;
-  }
+  // Add explanation image (note the spelling 'explainationImage')
+  payload.explainationImage = explanationImageUrl || '';
   
   return payload;
 };
@@ -129,23 +120,34 @@ export const createQuestionPayloadWithoutImages = (form: QuestionForm): any => {
     questionText: sanitizeString(form.questionText),
   };
   
-  // Add options as option1, option2, option3, option4
+  // Add questionImage if exists (would be empty string for now since no file upload)
+  payload.questionImage = '';
+  
+  // Add options as flat fields: option1, option1Correct, option1Image, etc.
   for (let i = 0; i < 4; i++) {
     // eslint-disable-next-line security/detect-object-injection
     const option = form.options[i];
-    const optionKey = `option${i + 1}`;
+    const optionNum = i + 1;
     
-    // eslint-disable-next-line security/detect-object-injection
-    payload[optionKey] = {
-      optionText: option?.option_text ? sanitizeString(option.option_text) : '',
-      isCorrect: option?.is_correct || false
-    };
+    // Add option text
+    payload[`option${optionNum}`] = option?.option_text ? sanitizeString(option.option_text) : '';
+    
+    // Add option correct status
+    payload[`option${optionNum}Correct`] = option?.is_correct || false;
+    
+    // Add option image (empty string for now)
+    payload[`option${optionNum}Image`] = '';
   }
   
-  // Add explanation if exists
+  // Add explanation (note the spelling 'explaination' as per backend)
   if (form.explanation && form.explanation.trim()) {
-    payload.explanation = sanitizeString(form.explanation);
+    payload.explaination = sanitizeString(form.explanation);
+  } else {
+    payload.explaination = '';
   }
+  
+  // Add explanation image (note the spelling 'explainationImage')
+  payload.explainationImage = '';
   
   return payload;
 };

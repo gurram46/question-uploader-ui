@@ -229,7 +229,7 @@ const QuestionsList: React.FC = () => {
                           <div className="space-y-3">
                             {question.options.map((option, index) => (
                               <div
-                                key={option.option_id}
+                                key={`${question.question_id}-option-${index}`}
                                 className={`flex items-start space-x-3 p-3 rounded-lg ${
                                   option.is_correct ? 'bg-green-50 border border-green-200' : 'bg-gray-50'
                                 }`}

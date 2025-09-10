@@ -27,7 +27,7 @@ export interface QuestionRow {
   option_id?: number;
   option_text?: string;
   option_image?: string;
-  is_correct: boolean;
+  is_correct: boolean | string;
   explanation?: string;
   explanation_image?: string;
   created_at?: string;

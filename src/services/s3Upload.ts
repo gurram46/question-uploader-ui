@@ -20,7 +20,13 @@ export const validateImageFile = (file: File): void => {
 export const createFormDataFromQuestion = (form: QuestionForm): FormData => {
   const formData = new FormData();
   
-  // Add basic question data with backend field names
+  // Add basic question data - using both camelCase and snake_case to ensure compatibility
+  formData.append('subjectName', sanitizeString(form.subjectName));
+  formData.append('topicName', sanitizeString(form.topicName));
+  formData.append('difficultyLevel', form.difficultyLevel.toString());
+  formData.append('questionText', sanitizeString(form.questionText));
+  
+  // Also add snake_case versions
   formData.append('subject_name', sanitizeString(form.subjectName));
   formData.append('topic_name', sanitizeString(form.topicName));
   formData.append('difficulty_level', form.difficultyLevel.toString());
@@ -29,6 +35,7 @@ export const createFormDataFromQuestion = (form: QuestionForm): FormData => {
   // Add question image if exists
   if (form.questionImage) {
     validateImageFile(form.questionImage);
+    formData.append('questionImage', form.questionImage);
     formData.append('question_image', form.questionImage);
   }
   
@@ -40,24 +47,42 @@ export const createFormDataFromQuestion = (form: QuestionForm): FormData => {
   // Add explanation image if exists
   if (form.explanationImage) {
     validateImageFile(form.explanationImage);
+    formData.append('explanationImage', form.explanationImage);
     formData.append('explanation_image', form.explanationImage);
   }
   
-  // Add options
+  // Add options - create an array of valid options
   const validOptions = form.options.filter(option => 
     option.option_text.trim() || option.option_image
   );
   
+  // Try multiple formats for options to match backend expectations
+  const optionsArray = validOptions.map(option => ({
+    optionText: option.option_text ? sanitizeString(option.option_text) : '',
+    option_text: option.option_text ? sanitizeString(option.option_text) : '',
+    isCorrect: option.is_correct,
+    is_correct: option.is_correct,
+    optionImage: null,
+    option_image: null
+  }));
+  
+  // Add options as JSON string
+  formData.append('options', JSON.stringify(optionsArray));
+  
+  // Also add individual option fields
   validOptions.forEach((option, index) => {
     if (option.option_text.trim()) {
+      formData.append(`options[${index}][optionText]`, sanitizeString(option.option_text));
       formData.append(`options[${index}][option_text]`, sanitizeString(option.option_text));
     }
     
     if (option.option_image) {
       validateImageFile(option.option_image);
+      formData.append(`options[${index}][optionImage]`, option.option_image);
       formData.append(`options[${index}][option_image]`, option.option_image);
     }
     
+    formData.append(`options[${index}][isCorrect]`, option.is_correct.toString());
     formData.append(`options[${index}][is_correct]`, option.is_correct.toString());
   });
   

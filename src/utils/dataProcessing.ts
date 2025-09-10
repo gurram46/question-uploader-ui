@@ -41,6 +41,11 @@ export const groupQuestionsByQuestionId = (questionRows: QuestionRow[]): Grouped
       }
     }
     
+    // Handle is_correct as string 'True'/'False' or boolean
+    if (typeof parsedIsCorrect === 'string') {
+      parsedIsCorrect = parsedIsCorrect.toLowerCase() === 'true';
+    }
+    
     groupedQuestion.options.push({
       option_id: row.option_id,
       option_text: parsedOptionText,

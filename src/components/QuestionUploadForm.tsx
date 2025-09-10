@@ -1,7 +1,7 @@
 import React, { useState, useCallback } from 'react';
 import { QuestionForm, FormOption, ValidationError } from '../types';
 import { validateQuestionForm } from '../utils/validation';
-import { createFormDataFromQuestion } from '../services/s3Upload';
+import { createQuestionPayloadWithoutImages } from '../services/s3Upload';
 import { questionApi } from '../services/api';
 import { useToast } from '../hooks/useToast';
 
@@ -77,11 +77,13 @@ const QuestionUploadForm: React.FC = () => {
 
     setIsLoading(true);
     try {
-      // Create FormData from the form
-      const formData = createFormDataFromQuestion(form);
+      // Create JSON payload from the form (without images for now)
+      const payload = createQuestionPayloadWithoutImages(form);
+      
+      console.log('Sending payload:', payload); // Debug log
 
       // Submit to API
-      await questionApi.uploadQuestion(formData);
+      await questionApi.uploadQuestion(payload);
 
       // Reset form on success
       setForm({
@@ -174,10 +176,15 @@ const QuestionUploadForm: React.FC = () => {
               disabled={isLoading}
             >
               <option value={1}>1 - Very Easy</option>
-              <option value={2}>2 - Easy</option>
-              <option value={3}>3 - Medium</option>
-              <option value={4}>4 - Hard</option>
-              <option value={5}>5 - Very Hard</option>
+              <option value={2}>2</option>
+              <option value={3}>3 - Easy</option>
+              <option value={4}>4</option>
+              <option value={5}>5 - Medium</option>
+              <option value={6}>6</option>
+              <option value={7}>7 - Hard</option>
+              <option value={8}>8</option>
+              <option value={9}>9</option>
+              <option value={10}>10 - Very Hard</option>
             </select>
             {getFieldError('difficultyLevel') && (
               <p className="mt-1 text-sm text-red-600">{getFieldError('difficultyLevel')}</p>

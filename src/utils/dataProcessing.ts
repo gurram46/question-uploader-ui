@@ -75,19 +75,18 @@ export const formatDate = (dateString: string): string => {
 
 // Get difficulty level text and color
 export const getDifficultyInfo = (level: number): { text: string; color: string } => {
-  switch (level) {
-    case 1:
-      return { text: 'Very Easy', color: 'bg-green-100 text-green-800' };
-    case 2:
-      return { text: 'Easy', color: 'bg-blue-100 text-blue-800' };
-    case 3:
-      return { text: 'Medium', color: 'bg-yellow-100 text-yellow-800' };
-    case 4:
-      return { text: 'Hard', color: 'bg-orange-100 text-orange-800' };
-    case 5:
-      return { text: 'Very Hard', color: 'bg-red-100 text-red-800' };
-    default:
-      return { text: 'Unknown', color: 'bg-gray-100 text-gray-800' };
+  if (level <= 2) {
+    return { text: `Level ${level}`, color: 'bg-green-100 text-green-800' };
+  } else if (level <= 4) {
+    return { text: `Level ${level}`, color: 'bg-blue-100 text-blue-800' };
+  } else if (level <= 6) {
+    return { text: `Level ${level}`, color: 'bg-yellow-100 text-yellow-800' };
+  } else if (level <= 8) {
+    return { text: `Level ${level}`, color: 'bg-orange-100 text-orange-800' };
+  } else if (level <= 10) {
+    return { text: `Level ${level}`, color: 'bg-red-100 text-red-800' };
+  } else {
+    return { text: 'Unknown', color: 'bg-gray-100 text-gray-800' };
   }
 };
 

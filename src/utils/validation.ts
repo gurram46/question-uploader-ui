@@ -55,8 +55,8 @@ export const validateDifficultyLevel = (level: number): string[] => {
     errors.push('Difficulty level is required');
   } else if (!Number.isInteger(level)) {
     errors.push('Difficulty level must be a whole number');
-  } else if (level < 1 || level > 5) {
-    errors.push('Difficulty level must be between 1 and 5');
+  } else if (level < 1 || level > 10) {
+    errors.push('Difficulty level must be between 1 and 10');
   }
   
   return errors;

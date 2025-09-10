@@ -46,14 +46,10 @@ apiClient.interceptors.response.use(
 
 // API functions
 export const questionApi = {
-  // Upload a new question with FormData (includes files)
-  uploadQuestion: async (formData: FormData): Promise<any> => {
+  // Upload a new question with JSON payload
+  uploadQuestion: async (questionData: any): Promise<any> => {
     try {
-      const response: AxiosResponse<any> = await apiClient.post('/uploadquestion', formData, {
-        headers: {
-          'Content-Type': 'multipart/form-data',
-        },
-      });
+      const response: AxiosResponse<any> = await apiClient.post('/uploadquestion', questionData);
       return response.data;
     } catch (error: any) {
       if (error.response?.data?.message) {

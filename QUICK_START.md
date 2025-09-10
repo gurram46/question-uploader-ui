@@ -3,6 +3,10 @@
 ## Run the app
 
 ```bash
+# First time setup:
+cp .env.example .env
+
+# Install and run:
 npm install
 npm start
 ```

@@ -1,33 +1,22 @@
 # Question Uploader UI
 
-A secure React frontend application for uploading and managing questions in an internal database. This application works with a backend API deployed on Render and provides a user-friendly interface for question management with secure file handling.
+React app for uploading questions to the backend.
 
-## Recent Updates
+## Setup
 
-- Renamed `.env.example` to `.env` for easier configuration
-- Updated file upload service module name for clarity
-- Added technical issues report identifying areas for improvement
-- Security analysis completed and documented
+1. Install deps: `npm install`
+2. Start: `npm start`
+3. Build: `npm run build`
 
-## Setup Instructions
+## Backend API
 
-1. Copy `.env.example` to `.env` and update with your values
-2. Install dependencies: `npm install`
-3. Start development server: `npm start`
+Point to your backend in `.env`:
+```
+REACT_APP_API_BASE_URL=https://your-backend-url.com
+```
 
-## Technical Documentation
+## Notes
 
-See `technical_issues_report.md` for a comprehensive analysis of identified issues and recommendations for improvement.
-
-## Implementation Notes
-
-- The application sends question data as JSON payloads (not multipart/form-data)
-- Image fields are included as empty strings in the JSON when no images are selected
-- This design choice ensures compatibility with the backend API
-
-## Environment Variables
-
-| Variable | Description | Required |
-|----------|-------------|----------|
-| `REACT_APP_API_BASE_URL` | Backend API base URL | Yes |
-| `REACT_APP_ENVIRONMENT` | Environment identifier | Optional |
+- Check `backend-notes.md` for known backend issues
+- Currently uploads text only (no images yet)
+- Works with the backend at docquest-questions-backend.onrender.com

@@ -2,11 +2,9 @@ import { QuestionForm, QuestionPayload } from '../types';
 import { sanitizeString } from '../utils/validation';
 import axios from 'axios';
 
-// Allowed image types and max size
 const ALLOWED_IMAGE_TYPES = ['image/jpeg', 'image/jpg', 'image/png', 'image/webp'];
 const MAX_FILE_SIZE = 5 * 1024 * 1024; // 5MB
 
-// Validate file before upload
 export const validateImageFile = (file: File): void => {
   if (!ALLOWED_IMAGE_TYPES.includes(file.type)) {
     throw new Error(`Invalid file type. Allowed types: ${ALLOWED_IMAGE_TYPES.join(', ')}`);
@@ -17,13 +15,10 @@ export const validateImageFile = (file: File): void => {
   }
 };
 
-// Upload file to backend and get S3 URL
 const uploadFileToBackend = async (file: File): Promise<string> => {
   const formData = new FormData();
   formData.append('file', file);
   
-  // Upload to your backend's file upload endpoint
-  // The backend should handle S3 upload and return the public URL
   try {
     const response = await axios.post(
       `${process.env.REACT_APP_API_BASE_URL}/upload-image`,
@@ -36,33 +31,26 @@ const uploadFileToBackend = async (file: File): Promise<string> => {
     );
     return response.data.url || response.data.imageUrl || '';
   } catch (error) {
-    // File upload errors are handled by returning empty string
-    // In production, this could be enhanced with proper error reporting
     return '';
   }
 };
 
-// Create JSON payload from question form matching backend schema
 export const createQuestionPayload = async (form: QuestionForm): Promise<QuestionPayload> => {
-  // Upload images first and get their S3 URLs
   let questionImageUrl = '';
   let explanationImageUrl = '';
   const optionImageUrls: (string | null)[] = [null, null, null, null];
   
-  // Upload question image if exists
   if (form.questionImage) {
     validateImageFile(form.questionImage);
     questionImageUrl = await uploadFileToBackend(form.questionImage);
   }
   
-  // Upload explanation image if exists
   if (form.explanationImage) {
     validateImageFile(form.explanationImage);
     explanationImageUrl = await uploadFileToBackend(form.explanationImage);
   }
   
-  // Upload option images
-  const safeOptions = form.options.slice(0, 4); // Ensure max 4 options
+  const safeOptions = form.options.slice(0, 4);
   if (safeOptions[0]?.option_image) {
     validateImageFile(safeOptions[0].option_image);
     optionImageUrls[0] = await uploadFileToBackend(safeOptions[0].option_image);
@@ -80,7 +68,6 @@ export const createQuestionPayload = async (form: QuestionForm): Promise<Questio
     optionImageUrls[3] = await uploadFileToBackend(safeOptions[3].option_image);
   }
   
-  // Create the JSON payload matching backend schema
   const payload: QuestionPayload = {
     subjectName: sanitizeString(form.subjectName),
     topicName: sanitizeString(form.topicName),
@@ -95,7 +82,6 @@ export const createQuestionPayload = async (form: QuestionForm): Promise<Questio
     explainationImage: ''
   };
   
-  // Add options as JSON objects with optionText, optionImage, isCorrect
   const options = form.options.slice(0, 4);
   if (options[0]) {
     payload.option1 = {
@@ -126,8 +112,8 @@ export const createQuestionPayload = async (form: QuestionForm): Promise<Questio
     };
   }
   
-  // Add explanation (note the spelling 'explaination' as per backend)
-  payload.explaination = form.explanation && form.explanation.trim() 
+  // Backend expects 'explaination' spelling
+  payload.explaination = form.explanation && form.explanation.trim()
     ? sanitizeString(form.explanation) 
     : '';
   
@@ -137,17 +123,14 @@ export const createQuestionPayload = async (form: QuestionForm): Promise<Questio
   return payload;
 };
 
-// Create FormData with actual files for backend upload
 export const createQuestionFormData = (form: QuestionForm): FormData => {
   const formData = new FormData();
   
-  // Add text fields (exact case as backend expects)
   formData.append('subjectName', sanitizeString(form.subjectName));
   formData.append('topicName', sanitizeString(form.topicName));
   formData.append('difficultyLevel', form.difficultyLevel.toString());
   formData.append('questionText', sanitizeString(form.questionText));
   
-  // Add question image if exists (actual file, not empty string)
   if (form.questionImage) {
     validateImageFile(form.questionImage);
     formData.append('questionImage', form.questionImage);
@@ -155,7 +138,6 @@ export const createQuestionFormData = (form: QuestionForm): FormData => {
     formData.append('questionImage', '');
   }
   
-  // Add options as flat fields with actual files
   const formOptions = form.options.slice(0, 4);
   
   // Option 1
@@ -222,8 +204,7 @@ export const createQuestionFormData = (form: QuestionForm): FormData => {
   return formData;
 };
 
-// For cases where backend doesn't have separate image upload endpoint
-// We'll send the JSON directly without images (text only)
+// Send JSON without images since backend doesn't handle files properly yet
 export const createQuestionPayloadWithoutImages = (form: QuestionForm): QuestionPayload => {
   const payload: QuestionPayload = {
     subjectName: sanitizeString(form.subjectName),

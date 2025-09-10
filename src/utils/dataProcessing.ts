@@ -1,17 +1,15 @@
 import { QuestionRow, GroupedQuestion } from '../types';
 
-// Group flat question rows by question_id
 export const groupQuestionsByQuestionId = (questionRows: QuestionRow[]): GroupedQuestion[] => {
   const questionMap = new Map<string, GroupedQuestion>();
   
   questionRows.forEach(row => {
     if (!questionMap.has(row.question_id)) {
-      // Create new grouped question
       questionMap.set(row.question_id, {
         question_id: row.question_id,
         subject_name: row.subject_name,
         topic_name: row.topic_name,
-        difficulty_level: row.difficulty_level || 1, // Default to 1 if missing
+        difficulty_level: row.difficulty_level || 1,
         question_text: row.question_text,
         question_image: row.question_image,
         options: [],
@@ -21,14 +19,9 @@ export const groupQuestionsByQuestionId = (questionRows: QuestionRow[]): Grouped
       });
     }
     
-    // Add option to the grouped question
     const groupedQuestion = questionMap.get(row.question_id);
-    if (!groupedQuestion) {
-      // Skip if question not found (shouldn't happen but safer)
-      return;
-    }
+    if (!groupedQuestion) return;
     
-    // Parse option_text if it's a JSON string
     let parsedOptionText = row.option_text;
     let parsedOptionImage = row.option_image;
     let parsedIsCorrect = row.is_correct;
@@ -40,12 +33,10 @@ export const groupQuestionsByQuestionId = (questionRows: QuestionRow[]): Grouped
         parsedOptionImage = parsed.optionImage || row.option_image;
         parsedIsCorrect = parsed.isCorrect !== undefined ? parsed.isCorrect : row.is_correct;
       } catch (e) {
-        // If parsing fails, use the original text
         parsedOptionText = row.option_text;
       }
     }
     
-    // Handle is_correct as string 'True'/'False' or boolean
     if (typeof parsedIsCorrect === 'string') {
       parsedIsCorrect = parsedIsCorrect.toLowerCase() === 'true';
     }
@@ -58,7 +49,6 @@ export const groupQuestionsByQuestionId = (questionRows: QuestionRow[]): Grouped
     });
   });
   
-  // Convert map values to array and sort by creation date (newest first) if available
   return Array.from(questionMap.values()).sort((a, b) => {
     if (!a.created_at || !b.created_at) return 0;
     return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();

@@ -1,7 +1,7 @@
 import React, { useState, useCallback } from 'react';
 import { QuestionForm, FormOption, ValidationError } from '../types';
 import { validateQuestionForm } from '../utils/validation';
-import { createQuestionPayloadWithoutImages } from '../services/s3Upload';
+import { createQuestionPayloadWithoutImages } from '../services/uploadService';
 import { questionApi } from '../services/api';
 import { useToast } from '../hooks/useToast';
 
@@ -10,7 +10,6 @@ const QuestionUploadForm: React.FC = () => {
   const [isLoading, setIsLoading] = useState(false);
   const [validationErrors, setValidationErrors] = useState<ValidationError[]>([]);
 
-  // Initial form state
   const [form, setForm] = useState<QuestionForm>({
     subjectName: '',
     topicName: '',
@@ -27,17 +26,14 @@ const QuestionUploadForm: React.FC = () => {
     explanationImage: null,
   });
 
-  // Handle text input changes
   const handleInputChange = useCallback((field: keyof QuestionForm, value: string | number) => {
     setForm(prev => ({
       ...prev,
       [field]: value
     }));
-    // Clear validation errors for this field
     setValidationErrors(prev => prev.filter(error => error.field !== field));
   }, []);
 
-  // Handle file input changes
   const handleFileChange = useCallback((field: keyof QuestionForm, file: File | null) => {
     setForm(prev => ({
       ...prev,

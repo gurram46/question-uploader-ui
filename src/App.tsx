@@ -1,0 +1,75 @@
+import React, { useState } from 'react';
+import QuestionUploadForm from './components/QuestionUploadForm';
+import QuestionsList from './components/QuestionsList';
+import ToastContainer from './components/ToastContainer';
+import { useToast } from './hooks/useToast';
+import './App.css';
+
+type View = 'upload' | 'list';
+
+function App() {
+  const [currentView, setCurrentView] = useState<View>('upload');
+  const { toasts, removeToast } = useToast();
+
+  return (
+    <div className="min-h-screen bg-gray-100">
+      {/* Navigation */}
+      <nav className="bg-white shadow-sm border-b border-gray-200">
+        <div className="max-w-6xl mx-auto px-4">
+          <div className="flex justify-between items-center h-16">
+            <div className="flex items-center">
+              <h1 className="text-xl font-bold text-gray-900">Question Uploader</h1>
+              <span className="ml-2 text-sm text-gray-500">Internal Database</span>
+            </div>
+            
+            <div className="flex space-x-1">
+              <button
+                onClick={() => setCurrentView('upload')}
+                className={`px-4 py-2 text-sm font-medium rounded-md transition-colors ${
+                  currentView === 'upload'
+                    ? 'bg-primary-100 text-primary-700 border border-primary-200'
+                    : 'text-gray-600 hover:text-gray-900 hover:bg-gray-100'
+                }`}
+              >
+                Upload Question
+              </button>
+              <button
+                onClick={() => setCurrentView('list')}
+                className={`px-4 py-2 text-sm font-medium rounded-md transition-colors ${
+                  currentView === 'list'
+                    ? 'bg-primary-100 text-primary-700 border border-primary-200'
+                    : 'text-gray-600 hover:text-gray-900 hover:bg-gray-100'
+                }`}
+              >
+                View Questions
+              </button>
+            </div>
+          </div>
+        </div>
+      </nav>
+
+      {/* Main Content */}
+      <main className="py-8">
+        {currentView === 'upload' && <QuestionUploadForm />}
+        {currentView === 'list' && <QuestionsList />}
+      </main>
+
+      {/* Footer */}
+      <footer className="bg-white border-t border-gray-200 py-6 mt-12">
+        <div className="max-w-6xl mx-auto px-4 text-center">
+          <p className="text-sm text-gray-500">
+            Secure Question Uploader • Internal Database Management System
+          </p>
+          <p className="text-xs text-gray-400 mt-1">
+            Environment: {process.env.REACT_APP_ENVIRONMENT || 'development'}
+          </p>
+        </div>
+      </footer>
+
+      {/* Toast Notifications */}
+      <ToastContainer toasts={toasts} onRemove={removeToast} />
+    </div>
+  );
+}
+
+export default App;

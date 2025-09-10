@@ -1,0 +1,92 @@
+import axios, { AxiosResponse } from 'axios';
+import { Question, QuestionRow, ApiResponse, PreSignedUrlResponse } from '../types';
+
+const API_BASE_URL = process.env.REACT_APP_API_BASE_URL || 'http://localhost:3001';
+
+// Create axios instance with default config
+const apiClient = axios.create({
+  baseURL: API_BASE_URL,
+  timeout: 30000, // 30 second timeout
+  headers: {
+    'Content-Type': 'application/json',
+  },
+});
+
+// Request interceptor for logging and error handling
+apiClient.interceptors.request.use(
+  (config) => {
+    console.log(`API Request: ${config.method?.toUpperCase()} ${config.url}`);
+    return config;
+  },
+  (error) => {
+    console.error('API Request Error:', error);
+    return Promise.reject(error);
+  }
+);
+
+// Response interceptor for error handling
+apiClient.interceptors.response.use(
+  (response) => {
+    return response;
+  },
+  (error) => {
+    console.error('API Response Error:', error);
+    if (error.response?.status === 429) {
+      throw new Error('Too many requests. Please wait and try again.');
+    }
+    if (error.response?.status >= 500) {
+      throw new Error('Server error. Please try again later.');
+    }
+    if (error.code === 'ECONNABORTED') {
+      throw new Error('Request timeout. Please check your connection.');
+    }
+    throw error;
+  }
+);
+
+// API functions
+export const questionApi = {
+  // Upload a new question
+  uploadQuestion: async (question: Question): Promise<ApiResponse<any>> => {
+    try {
+      const response: AxiosResponse<ApiResponse<any>> = await apiClient.post('/uploadquestion', question);
+      return response.data;
+    } catch (error: any) {
+      if (error.response?.data?.message) {
+        throw new Error(error.response.data.message);
+      }
+      throw new Error(error.message || 'Failed to upload question');
+    }
+  },
+
+  // Get all questions
+  getQuestions: async (): Promise<QuestionRow[]> => {
+    try {
+      const response: AxiosResponse<QuestionRow[]> = await apiClient.get('/getquestions');
+      return response.data;
+    } catch (error: any) {
+      if (error.response?.data?.message) {
+        throw new Error(error.response.data.message);
+      }
+      throw new Error(error.message || 'Failed to fetch questions');
+    }
+  },
+
+  // Get pre-signed URL for S3 upload
+  getPreSignedUrl: async (fileName: string, fileType: string): Promise<PreSignedUrlResponse> => {
+    try {
+      const response: AxiosResponse<PreSignedUrlResponse> = await apiClient.post('/get-presigned-url', {
+        fileName,
+        fileType
+      });
+      return response.data;
+    } catch (error: any) {
+      if (error.response?.data?.message) {
+        throw new Error(error.response.data.message);
+      }
+      throw new Error(error.message || 'Failed to get pre-signed URL');
+    }
+  }
+};
+
+export default apiClient;

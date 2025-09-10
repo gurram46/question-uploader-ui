@@ -11,7 +11,7 @@ export const groupQuestionsByQuestionId = (questionRows: QuestionRow[]): Grouped
         question_id: row.question_id,
         subject_name: row.subject_name,
         topic_name: row.topic_name,
-        difficulty_level: row.difficulty_level,
+        difficulty_level: row.difficulty_level || 1, // Default to 1 if missing
         question_text: row.question_text,
         question_image: row.question_image,
         options: [],
@@ -22,7 +22,11 @@ export const groupQuestionsByQuestionId = (questionRows: QuestionRow[]): Grouped
     }
     
     // Add option to the grouped question
-    const groupedQuestion = questionMap.get(row.question_id)!;
+    const groupedQuestion = questionMap.get(row.question_id);
+    if (!groupedQuestion) {
+      // Skip if question not found (shouldn't happen but safer)
+      return;
+    }
     
     // Parse option_text if it's a JSON string
     let parsedOptionText = row.option_text;
@@ -74,17 +78,18 @@ export const formatDate = (dateString: string): string => {
 };
 
 // Get difficulty level text and color
-export const getDifficultyInfo = (level: number): { text: string; color: string } => {
-  if (level <= 2) {
-    return { text: `Level ${level}`, color: 'bg-green-100 text-green-800' };
-  } else if (level <= 4) {
-    return { text: `Level ${level}`, color: 'bg-blue-100 text-blue-800' };
-  } else if (level <= 6) {
-    return { text: `Level ${level}`, color: 'bg-yellow-100 text-yellow-800' };
-  } else if (level <= 8) {
-    return { text: `Level ${level}`, color: 'bg-orange-100 text-orange-800' };
-  } else if (level <= 10) {
-    return { text: `Level ${level}`, color: 'bg-red-100 text-red-800' };
+export const getDifficultyInfo = (level: number | undefined): { text: string; color: string } => {
+  const actualLevel = level || 1; // Default to 1 if undefined
+  if (actualLevel <= 2) {
+    return { text: `Level ${actualLevel}`, color: 'bg-green-100 text-green-800' };
+  } else if (actualLevel <= 4) {
+    return { text: `Level ${actualLevel}`, color: 'bg-blue-100 text-blue-800' };
+  } else if (actualLevel <= 6) {
+    return { text: `Level ${actualLevel}`, color: 'bg-yellow-100 text-yellow-800' };
+  } else if (actualLevel <= 8) {
+    return { text: `Level ${actualLevel}`, color: 'bg-orange-100 text-orange-800' };
+  } else if (actualLevel <= 10) {
+    return { text: `Level ${actualLevel}`, color: 'bg-red-100 text-red-800' };
   } else {
     return { text: 'Unknown', color: 'bg-gray-100 text-gray-800' };
   }

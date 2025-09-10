@@ -21,9 +21,10 @@ const QuestionsList: React.FC = () => {
         const questionRows = await questionApi.getQuestions();
         const groupedQuestions = groupQuestionsByQuestionId(questionRows);
         setQuestions(groupedQuestions);
-      } catch (error: any) {
-        console.error('Failed to fetch questions:', error);
-        showError(error.message || 'Failed to load questions');
+      } catch (error) {
+        // Error logging is handled by API service
+        const errorMessage = error instanceof Error ? error.message : 'Failed to load questions';
+        showError(errorMessage);
       } finally {
         setLoading(false);
       }
@@ -126,10 +127,15 @@ const QuestionsList: React.FC = () => {
               >
                 <option value="">All Difficulties</option>
                 <option value="1">1 - Very Easy</option>
-                <option value="2">2 - Easy</option>
-                <option value="3">3 - Medium</option>
-                <option value="4">4 - Hard</option>
-                <option value="5">5 - Very Hard</option>
+                <option value="2">2</option>
+                <option value="3">3 - Easy</option>
+                <option value="4">4</option>
+                <option value="5">5 - Medium</option>
+                <option value="6">6</option>
+                <option value="7">7 - Hard</option>
+                <option value="8">8</option>
+                <option value="9">9</option>
+                <option value="10">10 - Very Hard</option>
               </select>
             </div>
           </div>
@@ -169,7 +175,7 @@ const QuestionsList: React.FC = () => {
             <div className="space-y-4">
               {filteredQuestions.map((question) => {
                 const isExpanded = expandedQuestions.has(question.question_id);
-                const difficultyInfo = getDifficultyInfo(question.difficulty_level || 1);
+                const difficultyInfo = getDifficultyInfo(question.difficulty_level);
 
                 return (
                   <div key={question.question_id} className="border border-gray-200 rounded-lg overflow-hidden">

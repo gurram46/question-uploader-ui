@@ -89,3 +89,24 @@ export interface ValidationError {
   field: string;
   message: string;
 }
+
+// Backend payload types
+export interface OptionPayload {
+  optionText: string;
+  optionImage: string;
+  isCorrect: boolean;
+}
+
+export interface QuestionPayload {
+  subjectName: string;
+  topicName: string;
+  difficultyLevel: number;
+  questionText: string;
+  questionImage: string;
+  option1: OptionPayload;
+  option2: OptionPayload;
+  option3: OptionPayload;
+  option4: OptionPayload;
+  explaination: string;
+  explainationImage: string;
+}

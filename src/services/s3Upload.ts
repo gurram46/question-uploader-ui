@@ -1,4 +1,4 @@
-import { QuestionForm } from '../types';
+import { QuestionForm, QuestionPayload } from '../types';
 import { sanitizeString } from '../utils/validation';
 import axios from 'axios';
 
@@ -36,15 +36,14 @@ const uploadFileToBackend = async (file: File): Promise<string> => {
     );
     return response.data.url || response.data.imageUrl || '';
   } catch (error) {
-    console.error('File upload failed:', error);
-    // For now, return empty string if upload fails
-    // In production, you'd want to handle this properly
+    // File upload errors are handled by returning empty string
+    // In production, this could be enhanced with proper error reporting
     return '';
   }
 };
 
 // Create JSON payload from question form matching backend schema
-export const createQuestionPayload = async (form: QuestionForm): Promise<any> => {
+export const createQuestionPayload = async (form: QuestionForm): Promise<QuestionPayload> => {
   // Upload images first and get their S3 URLs
   let questionImageUrl = '';
   let explanationImageUrl = '';
@@ -63,40 +62,68 @@ export const createQuestionPayload = async (form: QuestionForm): Promise<any> =>
   }
   
   // Upload option images
-  for (let i = 0; i < 4; i++) {
-    // eslint-disable-next-line security/detect-object-injection
-    if (form.options[i]?.option_image) {
-      // eslint-disable-next-line security/detect-object-injection
-      validateImageFile(form.options[i].option_image!);
-      // eslint-disable-next-line security/detect-object-injection
-      optionImageUrls[i] = await uploadFileToBackend(form.options[i].option_image!);
-    }
+  const safeOptions = form.options.slice(0, 4); // Ensure max 4 options
+  if (safeOptions[0]?.option_image) {
+    validateImageFile(safeOptions[0].option_image);
+    optionImageUrls[0] = await uploadFileToBackend(safeOptions[0].option_image);
+  }
+  if (safeOptions[1]?.option_image) {
+    validateImageFile(safeOptions[1].option_image);
+    optionImageUrls[1] = await uploadFileToBackend(safeOptions[1].option_image);
+  }
+  if (safeOptions[2]?.option_image) {
+    validateImageFile(safeOptions[2].option_image);
+    optionImageUrls[2] = await uploadFileToBackend(safeOptions[2].option_image);
+  }
+  if (safeOptions[3]?.option_image) {
+    validateImageFile(safeOptions[3].option_image);
+    optionImageUrls[3] = await uploadFileToBackend(safeOptions[3].option_image);
   }
   
-  // Create the JSON payload matching backend schema (flat structure)
-  const payload: any = {
+  // Create the JSON payload matching backend schema
+  const payload: QuestionPayload = {
     subjectName: sanitizeString(form.subjectName),
     topicName: sanitizeString(form.topicName),
     difficultyLevel: form.difficultyLevel,
     questionText: sanitizeString(form.questionText),
     questionImage: questionImageUrl || '',
+    option1: { optionText: '', optionImage: '', isCorrect: false },
+    option2: { optionText: '', optionImage: '', isCorrect: false },
+    option3: { optionText: '', optionImage: '', isCorrect: false },
+    option4: { optionText: '', optionImage: '', isCorrect: false },
+    explaination: '',
+    explainationImage: ''
   };
   
-  // Add options as flat fields
-  for (let i = 0; i < 4; i++) {
-    // eslint-disable-next-line security/detect-object-injection
-    const option = form.options[i];
-    const optionNum = i + 1;
-    
-    // Add option text
-    payload[`option${optionNum}`] = option?.option_text ? sanitizeString(option.option_text) : '';
-    
-    // Add option correct status
-    payload[`option${optionNum}Correct`] = option?.is_correct || false;
-    
-    // Add option image
-    // eslint-disable-next-line security/detect-object-injection
-    payload[`option${optionNum}Image`] = optionImageUrls[i] || '';
+  // Add options as JSON objects with optionText, optionImage, isCorrect
+  const options = form.options.slice(0, 4);
+  if (options[0]) {
+    payload.option1 = {
+      optionText: options[0].option_text ? sanitizeString(options[0].option_text) : '',
+      optionImage: optionImageUrls[0] || '',
+      isCorrect: options[0].is_correct || false
+    };
+  }
+  if (options[1]) {
+    payload.option2 = {
+      optionText: options[1].option_text ? sanitizeString(options[1].option_text) : '',
+      optionImage: optionImageUrls[1] || '',
+      isCorrect: options[1].is_correct || false
+    };
+  }
+  if (options[2]) {
+    payload.option3 = {
+      optionText: options[2].option_text ? sanitizeString(options[2].option_text) : '',
+      optionImage: optionImageUrls[2] || '',
+      isCorrect: options[2].is_correct || false
+    };
+  }
+  if (options[3]) {
+    payload.option4 = {
+      optionText: options[3].option_text ? sanitizeString(options[3].option_text) : '',
+      optionImage: optionImageUrls[3] || '',
+      isCorrect: options[3].is_correct || false
+    };
   }
   
   // Add explanation (note the spelling 'explaination' as per backend)
@@ -129,26 +156,53 @@ export const createQuestionFormData = (form: QuestionForm): FormData => {
   }
   
   // Add options as flat fields with actual files
-  for (let i = 0; i < 4; i++) {
-    // eslint-disable-next-line security/detect-object-injection
-    const option = form.options[i];
-    const optionNum = i + 1;
-    
-    // Add option text
-    formData.append(`option${optionNum}`, option?.option_text ? sanitizeString(option.option_text) : '');
-    
-    // Add option correct status (with capital C)
-    formData.append(`option${optionNum}Correct`, (option?.is_correct || false).toString());
-    
-    // Add option image (actual file if exists)
-    // eslint-disable-next-line security/detect-object-injection
-    if (option?.option_image) {
-      // eslint-disable-next-line security/detect-object-injection
-      validateImageFile(option.option_image);
-      // eslint-disable-next-line security/detect-object-injection
-      formData.append(`option${optionNum}Image`, option.option_image);
+  const formOptions = form.options.slice(0, 4);
+  
+  // Option 1
+  if (formOptions[0]) {
+    formData.append('option1', formOptions[0].option_text ? sanitizeString(formOptions[0].option_text) : '');
+    formData.append('option1Correct', (formOptions[0].is_correct || false).toString());
+    if (formOptions[0].option_image) {
+      validateImageFile(formOptions[0].option_image);
+      formData.append('option1Image', formOptions[0].option_image);
     } else {
-      formData.append(`option${optionNum}Image`, '');
+      formData.append('option1Image', '');
+    }
+  }
+  
+  // Option 2
+  if (formOptions[1]) {
+    formData.append('option2', formOptions[1].option_text ? sanitizeString(formOptions[1].option_text) : '');
+    formData.append('option2Correct', (formOptions[1].is_correct || false).toString());
+    if (formOptions[1].option_image) {
+      validateImageFile(formOptions[1].option_image);
+      formData.append('option2Image', formOptions[1].option_image);
+    } else {
+      formData.append('option2Image', '');
+    }
+  }
+  
+  // Option 3
+  if (formOptions[2]) {
+    formData.append('option3', formOptions[2].option_text ? sanitizeString(formOptions[2].option_text) : '');
+    formData.append('option3Correct', (formOptions[2].is_correct || false).toString());
+    if (formOptions[2].option_image) {
+      validateImageFile(formOptions[2].option_image);
+      formData.append('option3Image', formOptions[2].option_image);
+    } else {
+      formData.append('option3Image', '');
+    }
+  }
+  
+  // Option 4
+  if (formOptions[3]) {
+    formData.append('option4', formOptions[3].option_text ? sanitizeString(formOptions[3].option_text) : '');
+    formData.append('option4Correct', (formOptions[3].is_correct || false).toString());
+    if (formOptions[3].option_image) {
+      validateImageFile(formOptions[3].option_image);
+      formData.append('option4Image', formOptions[3].option_image);
+    } else {
+      formData.append('option4Image', '');
     }
   }
   
@@ -170,42 +224,57 @@ export const createQuestionFormData = (form: QuestionForm): FormData => {
 
 // For cases where backend doesn't have separate image upload endpoint
 // We'll send the JSON directly without images (text only)
-export const createQuestionPayloadWithoutImages = (form: QuestionForm): any => {
-  const payload: any = {
+export const createQuestionPayloadWithoutImages = (form: QuestionForm): QuestionPayload => {
+  const payload: QuestionPayload = {
     subjectName: sanitizeString(form.subjectName),
     topicName: sanitizeString(form.topicName),
     difficultyLevel: form.difficultyLevel,
     questionText: sanitizeString(form.questionText),
+    questionImage: '',
+    option1: { optionText: '', optionImage: '', isCorrect: false },
+    option2: { optionText: '', optionImage: '', isCorrect: false },
+    option3: { optionText: '', optionImage: '', isCorrect: false },
+    option4: { optionText: '', optionImage: '', isCorrect: false },
+    explaination: '',
+    explainationImage: ''
   };
   
-  // Add questionImage if exists (would be empty string for now since no file upload)
-  payload.questionImage = '';
+  // Add options as JSON objects with optionText, optionImage, isCorrect
+  const payloadOptions = form.options.slice(0, 4);
   
-  // Add options as flat fields: option1, option1Correct, option1Image, etc.
-  for (let i = 0; i < 4; i++) {
-    // eslint-disable-next-line security/detect-object-injection
-    const option = form.options[i];
-    const optionNum = i + 1;
-    
-    // Add option text
-    payload[`option${optionNum}`] = option?.option_text ? sanitizeString(option.option_text) : '';
-    
-    // Add option correct status (with capital C)
-    payload[`option${optionNum}Correct`] = option?.is_correct || false;
-    
-    // Add option image (empty string for now)
-    payload[`option${optionNum}Image`] = '';
+  if (payloadOptions[0]) {
+    payload.option1 = {
+      optionText: payloadOptions[0].option_text ? sanitizeString(payloadOptions[0].option_text) : '',
+      optionImage: '',
+      isCorrect: payloadOptions[0].is_correct || false
+    };
+  }
+  if (payloadOptions[1]) {
+    payload.option2 = {
+      optionText: payloadOptions[1].option_text ? sanitizeString(payloadOptions[1].option_text) : '',
+      optionImage: '',
+      isCorrect: payloadOptions[1].is_correct || false
+    };
+  }
+  if (payloadOptions[2]) {
+    payload.option3 = {
+      optionText: payloadOptions[2].option_text ? sanitizeString(payloadOptions[2].option_text) : '',
+      optionImage: '',
+      isCorrect: payloadOptions[2].is_correct || false
+    };
+  }
+  if (payloadOptions[3]) {
+    payload.option4 = {
+      optionText: payloadOptions[3].option_text ? sanitizeString(payloadOptions[3].option_text) : '',
+      optionImage: '',
+      isCorrect: payloadOptions[3].is_correct || false
+    };
   }
   
   // Add explanation (note the spelling 'explaination' as per backend)
-  if (form.explanation && form.explanation.trim()) {
-    payload.explaination = sanitizeString(form.explanation);
-  } else {
-    payload.explaination = '';
-  }
-  
-  // Add explanation image (note the spelling 'explainationImage')
-  payload.explainationImage = '';
+  payload.explaination = form.explanation && form.explanation.trim() 
+    ? sanitizeString(form.explanation) 
+    : '';
   
   return payload;
 };

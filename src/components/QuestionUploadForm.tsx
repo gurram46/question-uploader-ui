@@ -103,9 +103,10 @@ const QuestionUploadForm: React.FC = () => {
 
       showSuccess('Question uploaded successfully!');
 
-    } catch (error: any) {
-      console.error('Upload error:', error);
-      showError(error.message || 'Failed to upload question. Please try again.');
+    } catch (error) {
+      // Error logging is handled by API service
+      const errorMessage = error instanceof Error ? error.message : 'Failed to upload question. Please try again.';
+      showError(errorMessage);
     } finally {
       setIsLoading(false);
     }

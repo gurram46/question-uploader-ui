@@ -5,6 +5,10 @@ import { generateId } from '../utils/dataProcessing';
 export const useToast = () => {
   const [toasts, setToasts] = useState<Toast[]>([]);
 
+  const removeToast = useCallback((id: string) => {
+    setToasts(prevToasts => prevToasts.filter(toast => toast.id !== id));
+  }, []);
+
   const addToast = useCallback((
     type: Toast['type'],
     message: string,
@@ -23,15 +27,11 @@ export const useToast = () => {
     // Auto remove toast after duration
     if (duration > 0) {
       setTimeout(() => {
-        removeToast(id);
+        setToasts(prevToasts => prevToasts.filter(toast => toast.id !== id));
       }, duration);
     }
 
     return id;
-  }, []);
-
-  const removeToast = useCallback((id: string) => {
-    setToasts(prevToasts => prevToasts.filter(toast => toast.id !== id));
   }, []);
 
   const clearAllToasts = useCallback(() => {

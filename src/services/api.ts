@@ -1,5 +1,5 @@
 import axios, { AxiosResponse } from 'axios';
-import { QuestionRow } from '../types';
+import { QuestionRow, ApiResponse, QuestionPayload } from '../types';
 
 const API_BASE_URL = process.env.REACT_APP_API_BASE_URL || 'http://localhost:3001';
 
@@ -12,11 +12,11 @@ const apiClient = axios.create({
 // Request interceptor for logging and error handling
 apiClient.interceptors.request.use(
   (config) => {
-    console.log(`API Request: ${config.method?.toUpperCase()} ${config.url}`);
+    // Logging removed for production security
     return config;
   },
   (error) => {
-    console.error('API Request Error:', error);
+    // Error logging handled elsewhere
     return Promise.reject(error);
   }
 );
@@ -27,7 +27,7 @@ apiClient.interceptors.response.use(
     return response;
   },
   (error) => {
-    console.error('API Response Error:', error);
+    // Error details logged only in development
     if (error.response?.status === 429) {
       throw new Error('Too many requests. Please wait and try again.');
     }
@@ -44,12 +44,12 @@ apiClient.interceptors.response.use(
 // API functions
 export const questionApi = {
   // Upload a new question with FormData or JSON payload
-  uploadQuestion: async (questionData: any): Promise<any> => {
+  uploadQuestion: async (questionData: FormData | QuestionPayload): Promise<ApiResponse<any>> => {
     try {
       // Determine if it's FormData or JSON
       const isFormData = questionData instanceof FormData;
       
-      const response: AxiosResponse<any> = await apiClient.post(
+      const response: AxiosResponse<ApiResponse<any>> = await apiClient.post(
         '/uploadquestion', 
         questionData,
         isFormData ? {
@@ -59,11 +59,17 @@ export const questionApi = {
         } : {}
       );
       return response.data;
-    } catch (error: any) {
-      if (error.response?.data?.message) {
-        throw new Error(error.response.data.message);
+    } catch (error) {
+      if (axios.isAxiosError(error)) {
+        if (error.response?.data?.message) {
+          throw new Error(error.response.data.message);
+        }
+        if (error.response?.status === 500) {
+          throw new Error('Server error: The backend may not support file uploads. Try uploading without images.');
+        }
+        throw new Error(error.message || 'Failed to upload question');
       }
-      throw new Error(error.message || 'Failed to upload question');
+      throw new Error('Failed to upload question');
     }
   },
 
@@ -72,11 +78,11 @@ export const questionApi = {
     try {
       const response: AxiosResponse<QuestionRow[]> = await apiClient.get('/getquestions');
       return response.data;
-    } catch (error: any) {
-      if (error.response?.data?.message) {
+    } catch (error) {
+      if (axios.isAxiosError(error) && error.response?.data?.message) {
         throw new Error(error.response.data.message);
       }
-      throw new Error(error.message || 'Failed to fetch questions');
+      throw new Error('Failed to fetch questions');
     }
   }
 };

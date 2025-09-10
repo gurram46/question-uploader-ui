@@ -1,7 +1,7 @@
 import React, { useState, useCallback } from 'react';
 import { QuestionForm, FormOption, ValidationError } from '../types';
-import { validateQuestionForm, sanitizeString } from '../utils/validation';
-import { uploadMultipleFiles } from '../services/s3Upload';
+import { validateQuestionForm } from '../utils/validation';
+import { createFormDataFromQuestion } from '../services/s3Upload';
 import { questionApi } from '../services/api';
 import { useToast } from '../hooks/useToast';
 
@@ -77,36 +77,11 @@ const QuestionUploadForm: React.FC = () => {
 
     setIsLoading(true);
     try {
-      // Collect all files that need to be uploaded
-      const filesToUpload: (File | null)[] = [
-        form.questionImage,
-        form.explanationImage,
-        ...form.options.map(option => option.option_image)
-      ];
-
-      // Upload files to S3
-      const uploadedUrls = await uploadMultipleFiles(filesToUpload);
-
-      // Build the question payload with uploaded URLs
-      const questionPayload = {
-        subjectName: sanitizeString(form.subjectName),
-        topicName: sanitizeString(form.topicName),
-        difficultyLevel: form.difficultyLevel,
-        questionText: sanitizeString(form.questionText),
-        questionImage: uploadedUrls[0] || undefined,
-        explanation: form.explanation ? sanitizeString(form.explanation) : undefined,
-        explanationImage: uploadedUrls[1] || undefined,
-        options: form.options
-          .map((option, index) => ({
-            option_text: option.option_text ? sanitizeString(option.option_text) : undefined,
-            option_image: uploadedUrls[2 + index] || undefined,
-            is_correct: option.is_correct
-          }))
-          .filter(option => option.option_text || option.option_image) // Only include non-empty options
-      };
+      // Create FormData from the form
+      const formData = createFormDataFromQuestion(form);
 
       // Submit to API
-      await questionApi.uploadQuestion(questionPayload);
+      await questionApi.uploadQuestion(formData);
 
       // Reset form on success
       setForm({

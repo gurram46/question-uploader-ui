@@ -1,5 +1,5 @@
-import axios from 'axios';
-import { questionApi } from './api';
+import { QuestionForm } from '../types';
+import { sanitizeString } from '../utils/validation';
 
 // Allowed image types and max size
 const ALLOWED_IMAGE_TYPES = ['image/jpeg', 'image/jpg', 'image/png', 'image/webp'];
@@ -16,62 +16,52 @@ export const validateImageFile = (file: File): void => {
   }
 };
 
-// Generate unique filename
-const generateFileName = (file: File): string => {
-  const timestamp = Date.now();
-  const randomString = Math.random().toString(36).substring(2, 15);
-  const extension = file.name.split('.').pop() || 'jpg';
-  return `${timestamp}-${randomString}.${extension}`;
-};
-
-// Upload file to S3 using pre-signed URL
-export const uploadFileToS3 = async (file: File): Promise<string> => {
-  try {
-    // Validate file first
-    validateImageFile(file);
-    
-    // Generate unique filename
-    const fileName = generateFileName(file);
-    
-    // Get pre-signed URL from backend
-    const { presignedUrl, publicUrl } = await questionApi.getPreSignedUrl(fileName, file.type);
-    
-    // Upload file to S3 using pre-signed URL
-    await axios.put(presignedUrl, file, {
-      headers: {
-        'Content-Type': file.type,
-      },
-      timeout: 60000, // 60 second timeout for file uploads
-    });
-    
-    return publicUrl;
-  } catch (error: any) {
-    console.error('S3 Upload Error:', error);
-    
-    if (error.code === 'ECONNABORTED') {
-      throw new Error('File upload timeout. Please try again with a smaller file.');
-    }
-    
-    if (error.response?.status === 403) {
-      throw new Error('Upload permission denied. Please check your S3 configuration.');
-    }
-    
-    if (error.response?.status === 400) {
-      throw new Error('Invalid file or upload request.');
-    }
-    
-    throw new Error(error.message || 'Failed to upload file');
+// Create FormData from question form
+export const createFormDataFromQuestion = (form: QuestionForm): FormData => {
+  const formData = new FormData();
+  
+  // Add basic question data
+  formData.append('subjectName', sanitizeString(form.subjectName));
+  formData.append('topicName', sanitizeString(form.topicName));
+  formData.append('difficultyLevel', form.difficultyLevel.toString());
+  formData.append('questionText', sanitizeString(form.questionText));
+  
+  // Add question image if exists
+  if (form.questionImage) {
+    validateImageFile(form.questionImage);
+    formData.append('questionImage', form.questionImage);
   }
-};
-
-// Upload multiple files
-export const uploadMultipleFiles = async (files: (File | null)[]): Promise<(string | null)[]> => {
-  const uploadPromises = files.map(async (file) => {
-    if (!file) return null;
-    return uploadFileToS3(file);
+  
+  // Add explanation if exists
+  if (form.explanation && form.explanation.trim()) {
+    formData.append('explanation', sanitizeString(form.explanation));
+  }
+  
+  // Add explanation image if exists
+  if (form.explanationImage) {
+    validateImageFile(form.explanationImage);
+    formData.append('explanationImage', form.explanationImage);
+  }
+  
+  // Add options
+  const validOptions = form.options.filter(option => 
+    option.option_text.trim() || option.option_image
+  );
+  
+  validOptions.forEach((option, index) => {
+    if (option.option_text.trim()) {
+      formData.append(`options[${index}][option_text]`, sanitizeString(option.option_text));
+    }
+    
+    if (option.option_image) {
+      validateImageFile(option.option_image);
+      formData.append(`options[${index}][option_image]`, option.option_image);
+    }
+    
+    formData.append(`options[${index}][is_correct]`, option.is_correct.toString());
   });
   
-  return Promise.all(uploadPromises);
+  return formData;
 };
 
 // Utility function to convert File to base64 for preview
@@ -85,8 +75,7 @@ export const fileToBase64 = (file: File): Promise<string> => {
 };
 
 export default {
-  uploadFileToS3,
-  uploadMultipleFiles,
+  createFormDataFromQuestion,
   validateImageFile,
   fileToBase64
 };

@@ -1,5 +1,5 @@
 import axios, { AxiosResponse } from 'axios';
-import { Question, QuestionRow, ApiResponse, PreSignedUrlResponse } from '../types';
+import { QuestionRow } from '../types';
 
 const API_BASE_URL = process.env.REACT_APP_API_BASE_URL || 'http://localhost:3001';
 
@@ -46,10 +46,14 @@ apiClient.interceptors.response.use(
 
 // API functions
 export const questionApi = {
-  // Upload a new question
-  uploadQuestion: async (question: Question): Promise<ApiResponse<any>> => {
+  // Upload a new question with FormData (includes files)
+  uploadQuestion: async (formData: FormData): Promise<any> => {
     try {
-      const response: AxiosResponse<ApiResponse<any>> = await apiClient.post('/uploadquestion', question);
+      const response: AxiosResponse<any> = await apiClient.post('/uploadquestion', formData, {
+        headers: {
+          'Content-Type': 'multipart/form-data',
+        },
+      });
       return response.data;
     } catch (error: any) {
       if (error.response?.data?.message) {
@@ -69,22 +73,6 @@ export const questionApi = {
         throw new Error(error.response.data.message);
       }
       throw new Error(error.message || 'Failed to fetch questions');
-    }
-  },
-
-  // Get pre-signed URL for S3 upload
-  getPreSignedUrl: async (fileName: string, fileType: string): Promise<PreSignedUrlResponse> => {
-    try {
-      const response: AxiosResponse<PreSignedUrlResponse> = await apiClient.post('/get-presigned-url', {
-        fileName,
-        fileType
-      });
-      return response.data;
-    } catch (error: any) {
-      if (error.response?.data?.message) {
-        throw new Error(error.response.data.message);
-      }
-      throw new Error(error.message || 'Failed to get pre-signed URL');
     }
   }
 };

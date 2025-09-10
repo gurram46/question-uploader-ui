@@ -76,11 +76,6 @@ export interface ApiResponse<T> {
   data?: T;
 }
 
-export interface PreSignedUrlResponse {
-  presignedUrl: string;
-  publicUrl: string;
-}
-
 // Toast notification types
 export interface Toast {
   id: string;

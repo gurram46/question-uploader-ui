@@ -1,7 +1,7 @@
 import React, { useState, useCallback } from 'react';
 import { QuestionForm, FormOption, ValidationError } from '../types';
 import { validateQuestionForm } from '../utils/validation';
-import { createQuestionFormData } from '../services/s3Upload';
+import { createQuestionPayloadWithoutImages } from '../services/s3Upload';
 import { questionApi } from '../services/api';
 import { useToast } from '../hooks/useToast';
 
@@ -77,11 +77,11 @@ const QuestionUploadForm: React.FC = () => {
 
     setIsLoading(true);
     try {
-      // Create FormData with actual files
-      const formData = createQuestionFormData(form);
+      // Create JSON payload (without files to avoid backend crash)
+      const payload = createQuestionPayloadWithoutImages(form);
 
-      // Submit to API (will send as multipart/form-data)
-      await questionApi.uploadQuestion(formData);
+      // Submit to API (will send as JSON)
+      await questionApi.uploadQuestion(payload);
 
       // Reset form on success
       setForm({

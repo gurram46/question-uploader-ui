@@ -114,7 +114,7 @@ export const createQuestionPayload = async (form: QuestionForm): Promise<any> =>
 export const createQuestionFormData = (form: QuestionForm): FormData => {
   const formData = new FormData();
   
-  // Add text fields
+  // Add text fields (exact case as backend expects)
   formData.append('subjectName', sanitizeString(form.subjectName));
   formData.append('topicName', sanitizeString(form.topicName));
   formData.append('difficultyLevel', form.difficultyLevel.toString());
@@ -137,7 +137,7 @@ export const createQuestionFormData = (form: QuestionForm): FormData => {
     // Add option text
     formData.append(`option${optionNum}`, option?.option_text ? sanitizeString(option.option_text) : '');
     
-    // Add option correct status
+    // Add option correct status (with capital C)
     formData.append(`option${optionNum}Correct`, (option?.is_correct || false).toString());
     
     // Add option image (actual file if exists)
@@ -190,7 +190,7 @@ export const createQuestionPayloadWithoutImages = (form: QuestionForm): any => {
     // Add option text
     payload[`option${optionNum}`] = option?.option_text ? sanitizeString(option.option_text) : '';
     
-    // Add option correct status
+    // Add option correct status (with capital C)
     payload[`option${optionNum}Correct`] = option?.is_correct || false;
     
     // Add option image (empty string for now)

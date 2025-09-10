@@ -61,12 +61,7 @@ cp .env.example .env
 Edit `.env` file:
 ```env
 # API Configuration
-REACT_APP_API_BASE_URL=https://your-backend-api.render.com
-
-# S3 Configuration (populated from backend)
-REACT_APP_S3_BUCKET_NAME=your-s3-bucket-name
-REACT_APP_S3_REGION=us-east-1
-REACT_APP_CLOUDFRONT_URL=https://your-cloudfront-distribution.cloudfront.net
+REACT_APP_API_BASE_URL=https://docquest-questions-backend.onrender.com
 
 # Environment
 REACT_APP_ENVIRONMENT=development
@@ -104,7 +99,7 @@ npm test
 
 ## API Integration
 
-The frontend integrates with two main API endpoints:
+The frontend integrates with the DocQuest backend deployed at `https://docquest-questions-backend.onrender.com` with two main API endpoints:
 
 ### POST /uploadquestion
 Uploads a new question with the following payload structure:
@@ -131,10 +126,9 @@ Returns all questions in flat format (one row per option). The frontend groups t
 ## File Upload Process
 
 1. **Validation** - Files are validated for type (JPG, PNG, WebP) and size (≤5MB)
-2. **Pre-signed URL** - Backend provides secure upload URL
-3. **S3 Upload** - File uploaded directly to S3 via pre-signed URL
-4. **URL Replacement** - Local file objects replaced with S3 public URLs
-5. **API Submit** - Final payload sent to backend
+2. **FormData Creation** - Question data and files are packaged into FormData
+3. **Direct Upload** - FormData is sent directly to backend API
+4. **Backend Processing** - Backend handles S3 upload and database storage
 
 ## Security Features
 
@@ -194,9 +188,6 @@ src/
 | Variable | Description | Required |
 |----------|-------------|----------|
 | `REACT_APP_API_BASE_URL` | Backend API base URL | Yes |
-| `REACT_APP_S3_BUCKET_NAME` | AWS S3 bucket name | Yes |
-| `REACT_APP_S3_REGION` | AWS S3 region | Yes |
-| `REACT_APP_CLOUDFRONT_URL` | CloudFront distribution URL | Optional |
 | `REACT_APP_ENVIRONMENT` | Environment identifier | Optional |
 
 ## Error Handling
@@ -241,8 +232,8 @@ The application includes comprehensive error handling:
 ### Common Issues
 
 **File Upload Fails**
-- Check S3 bucket permissions
-- Verify pre-signed URL generation
+- Check backend API connectivity
+- Verify file format is supported (JPG, PNG, WebP)
 - Ensure file size is under 5MB
 
 **API Errors**

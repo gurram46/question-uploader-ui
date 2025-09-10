@@ -11,7 +11,7 @@ const QuestionsList: React.FC = () => {
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedSubject, setSelectedSubject] = useState('');
   const [selectedDifficulty, setSelectedDifficulty] = useState<number | null>(null);
-  const [expandedQuestions, setExpandedQuestions] = useState<Set<number>>(new Set());
+  const [expandedQuestions, setExpandedQuestions] = useState<Set<string>>(new Set());
 
   // Fetch questions on component mount
   useEffect(() => {
@@ -49,7 +49,7 @@ const QuestionsList: React.FC = () => {
   }, [questions]);
 
   // Toggle question expansion
-  const toggleExpansion = useCallback((questionId: number) => {
+  const toggleExpansion = useCallback((questionId: string) => {
     setExpandedQuestions(prev => {
       const newSet = new Set(prev);
       if (newSet.has(questionId)) {
@@ -169,7 +169,7 @@ const QuestionsList: React.FC = () => {
             <div className="space-y-4">
               {filteredQuestions.map((question) => {
                 const isExpanded = expandedQuestions.has(question.question_id);
-                const difficultyInfo = getDifficultyInfo(question.difficultyLevel);
+                const difficultyInfo = getDifficultyInfo(question.difficulty_level || 1);
 
                 return (
                   <div key={question.question_id} className="border border-gray-200 rounded-lg overflow-hidden">
@@ -182,18 +182,18 @@ const QuestionsList: React.FC = () => {
                         <div className="flex-1">
                           <div className="flex items-center space-x-3 mb-2">
                             <span className="text-sm font-medium text-gray-600">#{question.question_id}</span>
-                            <span className="text-sm text-gray-500">{question.subjectName}</span>
+                            <span className="text-sm text-gray-500">{question.subject_name}</span>
                             <span className="text-sm text-gray-400">•</span>
-                            <span className="text-sm text-gray-500">{question.topicName}</span>
+                            <span className="text-sm text-gray-500">{question.topic_name}</span>
                             <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${difficultyInfo.color}`}>
                               {difficultyInfo.text}
                             </span>
                           </div>
                           <p className="text-gray-900 font-medium line-clamp-2">
-                            {question.questionText}
+                            {question.question_text}
                           </p>
                           <p className="text-sm text-gray-500 mt-1">
-                            {formatDate(question.created_at)} • {question.options.length} options
+                            {question.created_at && formatDate(question.created_at)} • {question.options.length} options
                           </p>
                         </div>
                         <div className="ml-4">
@@ -213,10 +213,10 @@ const QuestionsList: React.FC = () => {
                     {isExpanded && (
                       <div className="p-6 bg-white border-t border-gray-200">
                         {/* Question Image */}
-                        {question.questionImage && (
+                        {question.question_image && (
                           <div className="mb-6">
                             <img
-                              src={question.questionImage}
+                              src={question.question_image}
                               alt="Question"
                               className="max-w-md rounded-lg border border-gray-200"
                             />
@@ -269,15 +269,15 @@ const QuestionsList: React.FC = () => {
                         </div>
 
                         {/* Explanation */}
-                        {(question.explanation || question.explanationImage) && (
+                        {(question.explanation || question.explanation_image) && (
                           <div>
                             <h4 className="font-medium text-gray-900 mb-3">Explanation:</h4>
                             {question.explanation && (
                               <p className="text-gray-700 mb-3">{question.explanation}</p>
                             )}
-                            {question.explanationImage && (
+                            {question.explanation_image && (
                               <img
-                                src={question.explanationImage}
+                                src={question.explanation_image}
                                 alt="Explanation"
                                 className="max-w-md rounded-lg border border-gray-200"
                               />

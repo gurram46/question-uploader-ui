@@ -2,39 +2,58 @@ import { QuestionRow, GroupedQuestion } from '../types';
 
 // Group flat question rows by question_id
 export const groupQuestionsByQuestionId = (questionRows: QuestionRow[]): GroupedQuestion[] => {
-  const questionMap = new Map<number, GroupedQuestion>();
+  const questionMap = new Map<string, GroupedQuestion>();
   
   questionRows.forEach(row => {
     if (!questionMap.has(row.question_id)) {
       // Create new grouped question
       questionMap.set(row.question_id, {
         question_id: row.question_id,
-        subjectName: row.subjectName,
-        topicName: row.topicName,
-        difficultyLevel: row.difficultyLevel,
-        questionText: row.questionText,
-        questionImage: row.questionImage,
+        subject_name: row.subject_name,
+        topic_name: row.topic_name,
+        difficulty_level: row.difficulty_level,
+        question_text: row.question_text,
+        question_image: row.question_image,
         options: [],
         explanation: row.explanation,
-        explanationImage: row.explanationImage,
+        explanation_image: row.explanation_image,
         created_at: row.created_at
       });
     }
     
     // Add option to the grouped question
     const groupedQuestion = questionMap.get(row.question_id)!;
+    
+    // Parse option_text if it's a JSON string
+    let parsedOptionText = row.option_text;
+    let parsedOptionImage = row.option_image;
+    let parsedIsCorrect = row.is_correct;
+    
+    if (row.option_text && typeof row.option_text === 'string' && row.option_text.startsWith('{')) {
+      try {
+        const parsed = JSON.parse(row.option_text);
+        parsedOptionText = parsed.optionText || row.option_text;
+        parsedOptionImage = parsed.optionImage || row.option_image;
+        parsedIsCorrect = parsed.isCorrect !== undefined ? parsed.isCorrect : row.is_correct;
+      } catch (e) {
+        // If parsing fails, use the original text
+        parsedOptionText = row.option_text;
+      }
+    }
+    
     groupedQuestion.options.push({
       option_id: row.option_id,
-      option_text: row.option_text,
-      option_image: row.option_image,
-      is_correct: row.is_correct
+      option_text: parsedOptionText,
+      option_image: parsedOptionImage,
+      is_correct: parsedIsCorrect
     });
   });
   
-  // Convert map values to array and sort by creation date (newest first)
-  return Array.from(questionMap.values()).sort((a, b) => 
-    new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
-  );
+  // Convert map values to array and sort by creation date (newest first) if available
+  return Array.from(questionMap.values()).sort((a, b) => {
+    if (!a.created_at || !b.created_at) return 0;
+    return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
+  });
 };
 
 // Format date for display
@@ -103,15 +122,15 @@ export const filterQuestions = (
   return questions.filter(question => {
     // Search term filter (case-insensitive)
     const matchesSearch = !searchTerm || 
-      question.questionText.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      question.subjectName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      question.topicName.toLowerCase().includes(searchTerm.toLowerCase());
+      question.question_text.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      question.subject_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      question.topic_name.toLowerCase().includes(searchTerm.toLowerCase());
     
     // Subject filter
-    const matchesSubject = !subjectFilter || question.subjectName === subjectFilter;
+    const matchesSubject = !subjectFilter || question.subject_name === subjectFilter;
     
     // Difficulty filter
-    const matchesDifficulty = difficultyFilter === null || question.difficultyLevel === difficultyFilter;
+    const matchesDifficulty = difficultyFilter === null || question.difficulty_level === difficultyFilter;
     
     return matchesSearch && matchesSubject && matchesDifficulty;
   });
@@ -119,7 +138,7 @@ export const filterQuestions = (
 
 // Get unique subjects from questions
 export const getUniqueSubjects = (questions: GroupedQuestion[]): string[] => {
-  const subjects = questions.map(q => q.subjectName);
+  const subjects = questions.map(q => q.subject_name).filter(Boolean);
   return Array.from(new Set(subjects)).sort();
 };
 

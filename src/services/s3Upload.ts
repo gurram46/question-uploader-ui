@@ -20,16 +20,16 @@ export const validateImageFile = (file: File): void => {
 export const createFormDataFromQuestion = (form: QuestionForm): FormData => {
   const formData = new FormData();
   
-  // Add basic question data
-  formData.append('subjectName', sanitizeString(form.subjectName));
-  formData.append('topicName', sanitizeString(form.topicName));
-  formData.append('difficultyLevel', form.difficultyLevel.toString());
-  formData.append('questionText', sanitizeString(form.questionText));
+  // Add basic question data with backend field names
+  formData.append('subject_name', sanitizeString(form.subjectName));
+  formData.append('topic_name', sanitizeString(form.topicName));
+  formData.append('difficulty_level', form.difficultyLevel.toString());
+  formData.append('question_text', sanitizeString(form.questionText));
   
   // Add question image if exists
   if (form.questionImage) {
     validateImageFile(form.questionImage);
-    formData.append('questionImage', form.questionImage);
+    formData.append('question_image', form.questionImage);
   }
   
   // Add explanation if exists
@@ -40,7 +40,7 @@ export const createFormDataFromQuestion = (form: QuestionForm): FormData => {
   // Add explanation image if exists
   if (form.explanationImage) {
     validateImageFile(form.explanationImage);
-    formData.append('explanationImage', form.explanationImage);
+    formData.append('explanation_image', form.explanationImage);
   }
   
   // Add options

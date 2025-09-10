@@ -18,37 +18,37 @@ export interface Question {
 
 // API Response types
 export interface QuestionRow {
-  question_id: number;
-  subjectName: string;
-  topicName: string;
-  difficultyLevel: number;
-  questionText: string;
-  questionImage?: string;
-  option_id: number;
+  question_id: string;
+  subject_name: string;
+  topic_name: string;
+  difficulty_level?: number;
+  question_text: string;
+  question_image?: string;
+  option_id?: number;
   option_text?: string;
   option_image?: string;
   is_correct: boolean;
   explanation?: string;
-  explanationImage?: string;
-  created_at: string;
+  explanation_image?: string;
+  created_at?: string;
 }
 
 export interface GroupedQuestion {
-  question_id: number;
-  subjectName: string;
-  topicName: string;
-  difficultyLevel: number;
-  questionText: string;
-  questionImage?: string;
+  question_id: string;
+  subject_name: string;
+  topic_name: string;
+  difficulty_level?: number;
+  question_text: string;
+  question_image?: string;
   options: Array<{
-    option_id: number;
+    option_id?: number;
     option_text?: string;
     option_image?: string;
     is_correct: boolean;
   }>;
   explanation?: string;
-  explanationImage?: string;
-  created_at: string;
+  explanation_image?: string;
+  created_at?: string;
 }
 
 // Form types

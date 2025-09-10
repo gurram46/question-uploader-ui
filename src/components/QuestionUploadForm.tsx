@@ -79,8 +79,6 @@ const QuestionUploadForm: React.FC = () => {
     try {
       // Create JSON payload from the form (without images for now)
       const payload = createQuestionPayloadWithoutImages(form);
-      
-      console.log('Sending payload:', payload); // Debug log
 
       // Submit to API
       await questionApi.uploadQuestion(payload);

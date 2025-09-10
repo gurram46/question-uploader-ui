@@ -2,13 +2,9 @@
   "extends": [
     "react-app",
     "react-app/jest",
-    "plugin:@typescript-eslint/recommended",
-    "plugin:react-hooks/recommended",
     "plugin:security/recommended"
   ],
   "plugins": [
-    "@typescript-eslint",
-    "react-hooks",
     "security"
   ],
   "parser": "@typescript-eslint/parser",

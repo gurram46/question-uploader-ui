@@ -110,6 +110,64 @@ export const createQuestionPayload = async (form: QuestionForm): Promise<any> =>
   return payload;
 };
 
+// Create FormData with actual files for backend upload
+export const createQuestionFormData = (form: QuestionForm): FormData => {
+  const formData = new FormData();
+  
+  // Add text fields
+  formData.append('subjectName', sanitizeString(form.subjectName));
+  formData.append('topicName', sanitizeString(form.topicName));
+  formData.append('difficultyLevel', form.difficultyLevel.toString());
+  formData.append('questionText', sanitizeString(form.questionText));
+  
+  // Add question image if exists (actual file, not empty string)
+  if (form.questionImage) {
+    validateImageFile(form.questionImage);
+    formData.append('questionImage', form.questionImage);
+  } else {
+    formData.append('questionImage', '');
+  }
+  
+  // Add options as flat fields with actual files
+  for (let i = 0; i < 4; i++) {
+    // eslint-disable-next-line security/detect-object-injection
+    const option = form.options[i];
+    const optionNum = i + 1;
+    
+    // Add option text
+    formData.append(`option${optionNum}`, option?.option_text ? sanitizeString(option.option_text) : '');
+    
+    // Add option correct status
+    formData.append(`option${optionNum}Correct`, (option?.is_correct || false).toString());
+    
+    // Add option image (actual file if exists)
+    // eslint-disable-next-line security/detect-object-injection
+    if (option?.option_image) {
+      // eslint-disable-next-line security/detect-object-injection
+      validateImageFile(option.option_image);
+      // eslint-disable-next-line security/detect-object-injection
+      formData.append(`option${optionNum}Image`, option.option_image);
+    } else {
+      formData.append(`option${optionNum}Image`, '');
+    }
+  }
+  
+  // Add explanation (note the spelling 'explaination' as per backend)
+  formData.append('explaination', form.explanation && form.explanation.trim() 
+    ? sanitizeString(form.explanation) 
+    : '');
+  
+  // Add explanation image (actual file if exists)
+  if (form.explanationImage) {
+    validateImageFile(form.explanationImage);
+    formData.append('explainationImage', form.explanationImage);
+  } else {
+    formData.append('explainationImage', '');
+  }
+  
+  return formData;
+};
+
 // For cases where backend doesn't have separate image upload endpoint
 // We'll send the JSON directly without images (text only)
 export const createQuestionPayloadWithoutImages = (form: QuestionForm): any => {
@@ -165,6 +223,7 @@ export const fileToBase64 = (file: File): Promise<string> => {
 export default {
   createQuestionPayload,
   createQuestionPayloadWithoutImages,
+  createQuestionFormData,
   validateImageFile,
   fileToBase64
 };

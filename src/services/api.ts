@@ -7,9 +7,6 @@ const API_BASE_URL = process.env.REACT_APP_API_BASE_URL || 'http://localhost:300
 const apiClient = axios.create({
   baseURL: API_BASE_URL,
   timeout: 30000, // 30 second timeout
-  headers: {
-    'Content-Type': 'application/json',
-  },
 });
 
 // Request interceptor for logging and error handling
@@ -46,10 +43,21 @@ apiClient.interceptors.response.use(
 
 // API functions
 export const questionApi = {
-  // Upload a new question with JSON payload
+  // Upload a new question with FormData or JSON payload
   uploadQuestion: async (questionData: any): Promise<any> => {
     try {
-      const response: AxiosResponse<any> = await apiClient.post('/uploadquestion', questionData);
+      // Determine if it's FormData or JSON
+      const isFormData = questionData instanceof FormData;
+      
+      const response: AxiosResponse<any> = await apiClient.post(
+        '/uploadquestion', 
+        questionData,
+        isFormData ? {
+          headers: {
+            'Content-Type': 'multipart/form-data',
+          },
+        } : {}
+      );
       return response.data;
     } catch (error: any) {
       if (error.response?.data?.message) {

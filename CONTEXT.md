@@ -79,3 +79,15 @@ If not set, generic fallback uses `${REACT_APP_API_BASE_URL}/image/{id}`.
 2. Check DevTools → Network → `uploadquestion` → Form Data: field names and order match list above.
 3. Reload list view: question, options, explanation text, and images should appear.
 4. If images don’t load, set `REACT_APP_*_IMAGE_BASE_URL` envs and restart.
+
+## Deploy: Vercel
+
+- Framework: Create React App
+- Build Command: `npm run build`
+- Output Directory: `build`
+- Environment Variables (Production):
+  - `REACT_APP_API_BASE_URL=https://docquest-questions-backend.onrender.com`
+  - `REACT_APP_IMAGE_BASE_URL=https://docquestimage.s3.ap-south-1.amazonaws.com`
+  - `REACT_APP_ENVIRONMENT=production`
+- Repo is ready with `vercel.json` pointing to `build`.
+- After adding env vars in Vercel → Project → Settings → Environment → Production, click Deploy. Each push to `main` auto‑deploys.

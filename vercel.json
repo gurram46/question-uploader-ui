@@ -4,8 +4,12 @@
   "builds": [
     { "src": "package.json", "use": "@vercel/static-build", "config": { "distDir": "build" } }
   ],
+  "build": {
+    "env": {
+      "CI": "false"
+    }
+  },
   "routes": [
     { "src": "/(.*)", "dest": "/index.html" }
   ]
 }
-

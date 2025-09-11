@@ -14,7 +14,13 @@ const resolveImageUrl = (value: any, kind: ImageKind = 'option'): string => {
     (kind === 'option' && process.env.REACT_APP_OPTION_IMAGE_BASE_URL) ||
     process.env.REACT_APP_IMAGE_BASE_URL
   );
-  const base = (baseFromEnv || `${process.env.REACT_APP_API_BASE_URL || ''}/image`).replace(/\/$/, '');
+  let defaultPath = '/image';
+  if (!baseFromEnv) {
+    if (kind === 'question') defaultPath = '/question-image';
+    else if (kind === 'explanation') defaultPath = '/explaination-image';
+    else if (kind === 'option') defaultPath = '/option-image';
+  }
+  const base = (baseFromEnv || `${process.env.REACT_APP_API_BASE_URL || ''}${defaultPath}`).replace(/\/$/, '');
   return `${base}/${encodeURIComponent(raw)}`;
 };
 

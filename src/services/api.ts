@@ -40,23 +40,45 @@ export const questionApi = {
     try {
       const isFormData = questionData instanceof FormData;
       
+      // Log FormData contents for debugging
+      if (isFormData && process.env.NODE_ENV === 'development') {
+        console.log('Sending FormData with fields:');
+        const entries: Array<{ key: string; value: string }> = [];
+        (questionData as FormData).forEach((value, key) => {
+          const v = value instanceof File ? `File: ${value.name} (${value.size} bytes)` : String(value);
+          entries.push({ key, value: v });
+        });
+        console.log(entries);
+      }
+      
+      // For FormData in browsers, do NOT set Content-Type manually; let the browser add the correct boundary.
       const response: AxiosResponse<ApiResponse<any>> = await apiClient.post(
         '/uploadquestion', 
-        questionData,
-        isFormData ? {
-          headers: {
-            'Content-Type': 'multipart/form-data',
-          },
-        } : {}
+        questionData
       );
       return response.data;
     } catch (error) {
       if (axios.isAxiosError(error)) {
+        // Log full error details in development
+        if (process.env.NODE_ENV === 'development') {
+          console.error('Upload error:', {
+            status: error.response?.status,
+            data: error.response?.data,
+            message: error.message
+          });
+        }
+        
         if (error.response?.data?.message) {
           throw new Error(error.response.data.message);
         }
+        if (error.response?.data?.error) {
+          throw new Error(error.response.data.error);
+        }
+        if (error.response?.status === 400) {
+          throw new Error('Bad request: Please check all required fields are filled correctly.');
+        }
         if (error.response?.status === 500) {
-          throw new Error('Server error: The backend may not support file uploads. Try uploading without images.');
+          throw new Error('Server error: The backend encountered an error processing your request.');
         }
         throw new Error(error.message || 'Failed to upload question');
       }
@@ -67,6 +89,13 @@ export const questionApi = {
   getQuestions: async (): Promise<QuestionRow[]> => {
     try {
       const response: AxiosResponse<QuestionRow[]> = await apiClient.get('/getquestions');
+      
+      // Log the raw response in development
+      if (process.env.NODE_ENV === 'development' && response.data.length > 0) {
+        console.log('Raw GET response sample:', response.data[0]);
+        console.log('Full response:', response.data);
+      }
+      
       return response.data;
     } catch (error) {
       if (axios.isAxiosError(error) && error.response?.data?.message) {

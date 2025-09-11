@@ -21,7 +21,7 @@ export interface QuestionRow {
   question_id: string;
   subject_name: string;
   topic_name: string;
-  difficulty_level?: number;
+  difficulty_level?: number | string; // Backend might send as string
   question_text: string;
   question_image?: string;
   option_id?: number;
@@ -29,7 +29,9 @@ export interface QuestionRow {
   option_image?: string;
   is_correct: boolean | string;
   explanation?: string;
+  explaination?: string; // Backend spelling
   explanation_image?: string;
+  explaination_image?: string; // Backend spelling
   created_at?: string;
 }
 
@@ -90,23 +92,25 @@ export interface ValidationError {
   message: string;
 }
 
-// Backend payload types
-export interface OptionPayload {
-  optionText: string;
-  optionImage: string;
-  isCorrect: boolean;
-}
-
+// Backend payload types - exact format expected by backend
 export interface QuestionPayload {
   subjectName: string;
   topicName: string;
   difficultyLevel: number;
   questionText: string;
   questionImage: string;
-  option1: OptionPayload;
-  option2: OptionPayload;
-  option3: OptionPayload;
-  option4: OptionPayload;
+  option1: string;
+  option1Image: string;
+  option1Correct: boolean;
+  option2: string;
+  option2Image: string;
+  option2Correct: boolean;
+  option3: string;
+  option3Image: string;
+  option3Correct: boolean;
+  option4: string;
+  option4Image: string;
+  option4Correct: boolean;
   explaination: string;
   explainationImage: string;
 }

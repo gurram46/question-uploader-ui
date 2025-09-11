@@ -1,52 +1,166 @@
 import { QuestionRow, GroupedQuestion } from '../types';
 
+// Build a usable image URL from backend values that may be IDs or relative tokens
+type ImageKind = 'question' | 'option' | 'explanation';
+const resolveImageUrl = (value: any, kind: ImageKind = 'option'): string => {
+  if (value === undefined || value === null) return '';
+  const raw = String(value).trim();
+  if (!raw) return '';
+  if (/^(https?:)?\/\//i.test(raw) || raw.startsWith('data:')) return raw;
+  // Allow kind-specific base URLs; fall back to generic
+  const baseFromEnv = (
+    (kind === 'question' && process.env.REACT_APP_QUESTION_IMAGE_BASE_URL) ||
+    (kind === 'explanation' && process.env.REACT_APP_EXPLANATION_IMAGE_BASE_URL) ||
+    (kind === 'option' && process.env.REACT_APP_OPTION_IMAGE_BASE_URL) ||
+    process.env.REACT_APP_IMAGE_BASE_URL
+  );
+  const base = (baseFromEnv || `${process.env.REACT_APP_API_BASE_URL || ''}/image`).replace(/\/$/, '');
+  return `${base}/${encodeURIComponent(raw)}`;
+};
+
+const normalizeText = (value: any): string => {
+  if (value === undefined || value === null) return '';
+  const raw = String(value).trim();
+  if (!raw) return '';
+  const lowered = raw.toLowerCase();
+  if (lowered === 'null' || lowered === 'undefined' || lowered === 'nil' || lowered === 'none') {
+    return '';
+  }
+  return raw;
+};
+
 export const groupQuestionsByQuestionId = (questionRows: QuestionRow[]): GroupedQuestion[] => {
   const questionMap = new Map<string, GroupedQuestion>();
   
   questionRows.forEach(row => {
     if (!questionMap.has(row.question_id)) {
+      // Parse difficulty - backend may return different field names/types
+      let difficultyLevel = 1;
+      const rawDifficulty: any = (row as any).difficulty_level ?? (row as any).difficultyLevel ?? (row as any).difficulty ?? (row as any).level;
+      if (rawDifficulty !== undefined && rawDifficulty !== null && rawDifficulty !== '') {
+        const parsed = typeof rawDifficulty === 'string' ? parseInt(rawDifficulty, 10) : Number(rawDifficulty);
+        if (!isNaN(parsed) && parsed >= 1 && parsed <= 10) {
+          difficultyLevel = parsed;
+        }
+      }
+      
+      // Normalize explanation fields (multiple spellings/styles)
+      const explanation = normalizeText(
+        (row as any).explanation 
+        ?? (row as any).explaination 
+        ?? (row as any).explaination_text 
+        ?? (row as any).explainationText 
+        ?? ''
+      );
+      const explanationImage = (row as any).explanation_image 
+        ?? (row as any).explaination_image 
+        ?? (row as any).explanationImage 
+        ?? (row as any).explainationImage 
+        ?? '';
+      const questionImage = (row as any).question_image ?? (row as any).questionImage ?? '';
+      
       questionMap.set(row.question_id, {
         question_id: row.question_id,
         subject_name: row.subject_name,
         topic_name: row.topic_name,
-        difficulty_level: row.difficulty_level || 1,
-        question_text: row.question_text,
-        question_image: row.question_image,
+        difficulty_level: difficultyLevel,
+        question_text: (row as any).question_text ?? (row as any).questionText ?? '',
+        question_image: resolveImageUrl(questionImage, 'question'),
         options: [],
-        explanation: row.explanation,
-        explanation_image: row.explanation_image,
+        explanation: explanation,
+        explanation_image: resolveImageUrl(explanationImage, 'explanation'),
         created_at: row.created_at
       });
     }
     
     const groupedQuestion = questionMap.get(row.question_id);
     if (!groupedQuestion) return;
+
+    // If explanation/image/question image were missing on the first row, fill them from subsequent rows
+    const rowExplanation = normalizeText(
+      (row as any).explanation 
+      ?? (row as any).explaination 
+      ?? (row as any).explaination_text 
+      ?? (row as any).explainationText 
+      ?? ''
+    );
+    const rowExplanationImage = (row as any).explanation_image 
+      ?? (row as any).explaination_image 
+      ?? (row as any).explanationImage 
+      ?? (row as any).explainationImage 
+      ?? '';
+    const rowQuestionImage = (row as any).question_image ?? (row as any).questionImage ?? '';
+    if ((!groupedQuestion.explanation || groupedQuestion.explanation === '') && rowExplanation) {
+      groupedQuestion.explanation = rowExplanation;
+    }
+    if ((!groupedQuestion.explanation_image || groupedQuestion.explanation_image === '') && rowExplanationImage) {
+      groupedQuestion.explanation_image = resolveImageUrl(rowExplanationImage, 'explanation');
+    }
+    if ((!groupedQuestion.question_image || groupedQuestion.question_image === '') && rowQuestionImage) {
+      groupedQuestion.question_image = resolveImageUrl(rowQuestionImage, 'question');
+    }
     
-    let parsedOptionText = row.option_text;
-    let parsedOptionImage = row.option_image;
-    let parsedIsCorrect = row.is_correct;
+    let parsedOptionText = (row as any).option_text;
+    let parsedOptionImage = (row as any).option_image;
+    let parsedIsCorrect = (row as any).is_correct;
     
-    if (row.option_text && typeof row.option_text === 'string' && row.option_text.startsWith('{')) {
+    // If API returns aggregated option1..option4 on a single row, expand once
+    if (
+      parsedOptionText === undefined &&
+      groupedQuestion.options.length === 0 &&
+      ((row as any).option1 !== undefined || (row as any).option1Text !== undefined)
+    ) {
+      const toBool = (v: any): boolean => {
+        if (typeof v === 'boolean') return v;
+        if (typeof v === 'number') return v === 1;
+        if (typeof v === 'string') return v.toLowerCase() === 'true' || v === '1';
+        return false;
+      };
+      for (let i = 1; i <= 4; i++) {
+        const text = (row as any)[`option${i}Text`] ?? (row as any)[`option${i}`] ?? '';
+        const image = (row as any)[`option${i}Image`] ?? '';
+        const correct = toBool((row as any)[`option${i}Correct`]);
+        if (text || image) {
+          groupedQuestion.options.push({
+            option_id: i,
+            option_text: text || '',
+            option_image: resolveImageUrl(image || '', 'option'),
+            is_correct: correct
+          });
+        }
+      }
+      return; // already populated for this row
+    }
+    
+    // Allow for backend that encodes option as JSON in option_text
+    if ((row as any).option_text && typeof (row as any).option_text === 'string' && (row as any).option_text.trim().startsWith('{')) {
       try {
-        const parsed = JSON.parse(row.option_text);
-        parsedOptionText = parsed.optionText || row.option_text;
-        parsedOptionImage = parsed.optionImage || row.option_image;
-        parsedIsCorrect = parsed.isCorrect !== undefined ? parsed.isCorrect : row.is_correct;
+        const parsed = JSON.parse((row as any).option_text);
+        parsedOptionText = parsed.optionText ?? parsed.option_text ?? (row as any).option_text;
+        parsedOptionImage = parsed.optionImage ?? parsed.option_image ?? (row as any).option_image;
+        parsedIsCorrect = parsed.isCorrect ?? parsed.is_correct ?? (row as any).is_correct;
       } catch (e) {
-        parsedOptionText = row.option_text;
+        parsedOptionText = (row as any).option_text;
       }
     }
     
+    // Normalize booleans and undefineds
     if (typeof parsedIsCorrect === 'string') {
-      parsedIsCorrect = parsedIsCorrect.toLowerCase() === 'true';
+      parsedIsCorrect = parsedIsCorrect.toLowerCase() === 'true' || parsedIsCorrect === '1';
+    }
+    if (parsedIsCorrect === undefined || parsedIsCorrect === null) {
+      parsedIsCorrect = false;
     }
     
-    groupedQuestion.options.push({
-      option_id: row.option_id,
-      option_text: parsedOptionText,
-      option_image: parsedOptionImage,
-      is_correct: parsedIsCorrect
-    });
+    // Only push row-based option when present
+    if (parsedOptionText !== undefined || parsedOptionImage !== undefined || parsedIsCorrect !== undefined) {
+      groupedQuestion.options.push({
+        option_id: (row as any).option_id,
+        option_text: parsedOptionText || '',
+        option_image: resolveImageUrl(parsedOptionImage || '', 'option'),
+        is_correct: !!parsedIsCorrect
+      });
+    }
   });
   
   return Array.from(questionMap.values()).sort((a, b) => {

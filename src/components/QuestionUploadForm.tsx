@@ -1,7 +1,7 @@
 import React, { useState, useCallback } from 'react';
 import { QuestionForm, FormOption, ValidationError } from '../types';
 import { validateQuestionForm } from '../utils/validation';
-import { createQuestionPayloadWithoutImages } from '../services/uploadService';
+import { createQuestionFormData } from '../services/uploadService';
 import { questionApi } from '../services/api';
 import { useToast } from '../hooks/useToast';
 
@@ -73,11 +73,11 @@ const QuestionUploadForm: React.FC = () => {
 
     setIsLoading(true);
     try {
-      // Create JSON payload (without files to avoid backend crash)
-      const payload = createQuestionPayloadWithoutImages(form);
+      // Create FormData payload (backend expects multipart/form-data)
+      const formData = createQuestionFormData(form);
 
-      // Submit to API (will send as JSON)
-      await questionApi.uploadQuestion(payload);
+      // Submit to API (will send as FormData)
+      await questionApi.uploadQuestion(formData);
 
       // Reset form on success
       setForm({
@@ -170,16 +170,16 @@ const QuestionUploadForm: React.FC = () => {
               }`}
               disabled={isLoading}
             >
-              <option value={1}>1 - Very Easy</option>
+              <option value={1}>1</option>
               <option value={2}>2</option>
-              <option value={3}>3 - Easy</option>
+              <option value={3}>3</option>
               <option value={4}>4</option>
-              <option value={5}>5 - Medium</option>
+              <option value={5}>5</option>
               <option value={6}>6</option>
-              <option value={7}>7 - Hard</option>
+              <option value={7}>7</option>
               <option value={8}>8</option>
               <option value={9}>9</option>
-              <option value={10}>10 - Very Hard</option>
+              <option value={10}>10</option>
             </select>
             {getFieldError('difficultyLevel') && (
               <p className="mt-1 text-sm text-red-600">{getFieldError('difficultyLevel')}</p>
@@ -230,41 +230,77 @@ const QuestionUploadForm: React.FC = () => {
               Fill at least 2 options and mark at least 1 as correct. Each option must have either text or an image.
             </p>
             
-            <div className="space-y-4">
+            <div className="space-y-3">
               {form.options.map((option, index) => (
                 <div key={index} className="border border-gray-200 rounded-lg p-4">
-                  <div className="flex items-center justify-between mb-3">
-                    <h4 className="font-medium text-gray-700">Option {index + 1}</h4>
-                    <label className="flex items-center">
+                  <div className="flex items-center gap-3">
+                    {/* Option Number */}
+                    <div className="flex-shrink-0">
+                      <span className="inline-flex items-center justify-center h-8 w-8 rounded-full bg-gray-100 text-sm font-medium text-gray-700">
+                        {index + 1}
+                      </span>
+                    </div>
+                    
+                    {/* Option Text Input */}
+                    <div className="flex-grow">
                       <input
-                        type="checkbox"
-                        checked={option.is_correct}
-                        onChange={(e) => handleOptionChange(index, 'is_correct', e.target.checked)}
-                        className="mr-2 h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300 rounded"
+                        type="text"
+                        value={option.option_text}
+                        onChange={(e) => handleOptionChange(index, 'option_text', e.target.value)}
+                        placeholder={`Option ${index + 1} text...`}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
                         disabled={isLoading}
                       />
-                      <span className="text-sm text-gray-700">Correct Answer</span>
-                    </label>
+                    </div>
+                    
+                    {/* Image Upload */}
+                    <div className="flex-shrink-0">
+                      <label className="cursor-pointer inline-flex items-center px-3 py-2 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 focus-within:outline-none focus-within:ring-2 focus-within:ring-offset-2 focus-within:ring-primary-500">
+                        <svg className="mr-2 h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                        </svg>
+                        {option.option_image ? 'Change' : 'Add Image'}
+                        <input
+                          type="file"
+                          accept="image/*"
+                          onChange={(e) => handleOptionChange(index, 'option_image', e.target.files?.[0] || null)}
+                          className="sr-only"
+                          disabled={isLoading}
+                        />
+                      </label>
+                      {option.option_image && (
+                        <button
+                          type="button"
+                          onClick={() => handleOptionChange(index, 'option_image', null)}
+                          className="ml-2 text-sm text-red-600 hover:text-red-500"
+                          disabled={isLoading}
+                        >
+                          Remove
+                        </button>
+                      )}
+                    </div>
+                    
+                    {/* Correct Answer Checkbox */}
+                    <div className="flex-shrink-0">
+                      <label className="flex items-center">
+                        <input
+                          type="checkbox"
+                          checked={option.is_correct}
+                          onChange={(e) => handleOptionChange(index, 'is_correct', e.target.checked)}
+                          className="h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300 rounded"
+                          disabled={isLoading}
+                        />
+                        <span className="ml-2 text-sm text-gray-700 whitespace-nowrap">Correct</span>
+                      </label>
+                    </div>
                   </div>
                   
-                  <div className="space-y-3">
-                    <input
-                      type="text"
-                      value={option.option_text}
-                      onChange={(e) => handleOptionChange(index, 'option_text', e.target.value)}
-                      placeholder={`Option ${index + 1} text...`}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
-                      disabled={isLoading}
-                    />
-                    
-                    <input
-                      type="file"
-                      accept="image/*"
-                      onChange={(e) => handleOptionChange(index, 'option_image', e.target.files?.[0] || null)}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
-                      disabled={isLoading}
-                    />
-                  </div>
+                  {/* Show image filename if selected */}
+                  {option.option_image && (
+                    <div className="mt-2 ml-11 text-sm text-gray-500">
+                      Image: {option.option_image.name}
+                    </div>
+                  )}
                 </div>
               ))}
             </div>

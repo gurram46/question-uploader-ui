@@ -104,6 +104,32 @@ export const questionApi = {
       throw new Error('Failed to fetch questions');
     }
   }
+  ,
+  deleteQuestion: async (questionId: string): Promise<ApiResponse<any>> => {
+    try {
+      const response: AxiosResponse<ApiResponse<any>> = await apiClient.delete('/deletequestion', {
+        data: { questionId }
+      });
+      return response.data;
+    } catch (error) {
+      if (axios.isAxiosError(error)) {
+        if (process.env.NODE_ENV === 'development') {
+          console.error('Delete error:', {
+            status: error.response?.status,
+            data: error.response?.data,
+            message: error.message
+          });
+        }
+        if (error.response?.data?.message) {
+          throw new Error(error.response.data.message);
+        }
+        if (error.response?.data?.error) {
+          throw new Error(error.response.data.error);
+        }
+      }
+      throw new Error('Failed to delete question');
+    }
+  }
 };
 
 export default apiClient;

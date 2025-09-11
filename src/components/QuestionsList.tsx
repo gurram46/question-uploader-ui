@@ -5,7 +5,7 @@ import { groupQuestionsByQuestionId, formatDate, getDifficultyInfo, debounce, fi
 import { useToast } from '../hooks/useToast';
 
 const QuestionsList: React.FC = () => {
-  const { showError } = useToast();
+  const { showError, showSuccess } = useToast();
   const [questions, setQuestions] = useState<GroupedQuestion[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
@@ -68,6 +68,19 @@ const QuestionsList: React.FC = () => {
     setSelectedSubject('');
     setSelectedDifficulty(null);
   }, []);
+
+  const handleDelete = useCallback(async (questionId: string) => {
+    const ok = window.confirm('Delete this question? This cannot be undone.');
+    if (!ok) return;
+    try {
+      await questionApi.deleteQuestion(questionId);
+      setQuestions(prev => prev.filter(q => q.question_id !== questionId));
+      showSuccess('Question deleted');
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Failed to delete question';
+      showError(msg);
+    }
+  }, [showError, showSuccess]);
 
   if (loading) {
     return (
@@ -209,7 +222,14 @@ const QuestionsList: React.FC = () => {
                             {question.created_at && formatDate(question.created_at)} • {question.options.length} options
                           </p>
                         </div>
-                        <div className="ml-4">
+                        <div className="ml-4 flex items-center space-x-2">
+                          <button
+                            onClick={(e) => { e.stopPropagation(); handleDelete(question.question_id); }}
+                            className="text-red-600 hover:text-red-800 text-sm border border-red-200 px-2 py-1 rounded-md bg-red-50"
+                            title="Delete question"
+                          >
+                            Delete
+                          </button>
                           <svg
                             className={`w-5 h-5 text-gray-400 transition-transform ${isExpanded ? 'rotate-180' : ''}`}
                             fill="none"

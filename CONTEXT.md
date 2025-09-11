@@ -49,7 +49,7 @@ Notes:
 
 ## Image URL Bases (env)
 
-- `REACT_APP_IMAGE_BASE_URL` (generic fallback)
+- `REACT_APP_IMAGE_BASE_URL` (generic fallback) — set to your CDN/bucket base, e.g. `https://docquestimage.s3.amazonaws.com`
 - `REACT_APP_QUESTION_IMAGE_BASE_URL` (optional, overrides for question images)
 - `REACT_APP_OPTION_IMAGE_BASE_URL` (optional, overrides for option images)
 - `REACT_APP_EXPLANATION_IMAGE_BASE_URL` (optional, overrides for explanation images)

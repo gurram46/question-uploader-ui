@@ -69,8 +69,8 @@ export const validateQuestionText = (questionText: string): string[] => {
   
   if (!trimmed) {
     errors.push('Question text is required');
-  } else if (trimmed.length < 10) {
-    errors.push('Question text must be at least 10 characters long');
+  } else if (trimmed.length < 1) {
+    errors.push('Question text must be at least 1 character long');
   } else if (trimmed.length > 1000) {
     errors.push('Question text must be less than 1000 characters');
   }

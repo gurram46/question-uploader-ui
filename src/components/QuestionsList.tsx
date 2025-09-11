@@ -12,6 +12,7 @@ const QuestionsList: React.FC = () => {
   const [selectedSubject, setSelectedSubject] = useState('');
   const [selectedDifficulty, setSelectedDifficulty] = useState<number | null>(null);
   const [expandedQuestions, setExpandedQuestions] = useState<Set<string>>(new Set());
+  const [pendingDeleteId, setPendingDeleteId] = useState<string | null>(null);
 
   // Fetch questions on component mount
   useEffect(() => {
@@ -69,18 +70,23 @@ const QuestionsList: React.FC = () => {
     setSelectedDifficulty(null);
   }, []);
 
-  const handleDelete = useCallback(async (questionId: string) => {
-    const ok = window.confirm('Delete this question? This cannot be undone.');
-    if (!ok) return;
+  const requestDelete = useCallback((questionId: string) => {
+    setPendingDeleteId(questionId);
+  }, []);
+
+  const confirmDelete = useCallback(async (questionId: string) => {
     try {
       await questionApi.deleteQuestion(questionId);
       setQuestions(prev => prev.filter(q => q.question_id !== questionId));
+      setPendingDeleteId(null);
       showSuccess('Question deleted');
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'Failed to delete question';
       showError(msg);
     }
   }, [showError, showSuccess]);
+
+  const cancelDelete = useCallback(() => setPendingDeleteId(null), []);
 
   if (loading) {
     return (
@@ -223,13 +229,32 @@ const QuestionsList: React.FC = () => {
                           </p>
                         </div>
                         <div className="ml-4 flex items-center space-x-2">
-                          <button
-                            onClick={(e) => { e.stopPropagation(); handleDelete(question.question_id); }}
-                            className="text-red-600 hover:text-red-800 text-sm border border-red-200 px-2 py-1 rounded-md bg-red-50"
-                            title="Delete question"
-                          >
-                            Delete
-                          </button>
+                          {pendingDeleteId === question.question_id ? (
+                            <div className="flex items-center space-x-2" onClick={(e) => e.stopPropagation()}>
+                              <button
+                                onClick={() => confirmDelete(question.question_id)}
+                                className="text-white bg-red-600 hover:bg-red-700 text-xs px-2 py-1 rounded"
+                                title="Confirm delete"
+                              >
+                                Confirm
+                              </button>
+                              <button
+                                onClick={cancelDelete}
+                                className="text-gray-700 bg-gray-100 hover:bg-gray-200 text-xs px-2 py-1 rounded border border-gray-200"
+                                title="Cancel"
+                              >
+                                Cancel
+                              </button>
+                            </div>
+                          ) : (
+                            <button
+                              onClick={(e) => { e.stopPropagation(); requestDelete(question.question_id); }}
+                              className="text-red-600 hover:text-red-800 text-sm border border-red-200 px-2 py-1 rounded-md bg-red-50"
+                              title="Delete question"
+                            >
+                              Delete
+                            </button>
+                          )}
                           <svg
                             className={`w-5 h-5 text-gray-400 transition-transform ${isExpanded ? 'rotate-180' : ''}`}
                             fill="none"

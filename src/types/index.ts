@@ -111,6 +111,6 @@ export interface QuestionPayload {
   option4: string;
   option4Image: string;
   option4Correct: boolean;
-  explaination: string;
-  explainationImage: string;
+  explanation: string;
+  explanationImage: string;
 }

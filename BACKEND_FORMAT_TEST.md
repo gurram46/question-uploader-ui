@@ -27,8 +27,8 @@ option4: "6"
 option4Correct: "false"
 option4Image: [File] (if uploaded, otherwise empty)
 
-explaination: "Basic arithmetic"
-explainationImage: [File] (if uploaded, otherwise empty)
+explanation: "Basic arithmetic"
+explanationImage: [File] (if uploaded, otherwise empty)
 ```
 
 ## Changes Made
@@ -44,6 +44,6 @@ This exactly matches the current backend format:
 - `option1`, `option1Image`, `option1Correct` (not nested objects)
 - `subjectName`, `topicName`, `difficultyLevel`
 - `questionText`, `questionImage`
-- `explaination`, `explainationImage` (with backend's spelling)
+- `explanation`, `explanationImage`
 
 The frontend will work with your existing backend without any backend changes needed.

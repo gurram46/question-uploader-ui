@@ -88,17 +88,17 @@ export const createQuestionPayload = async (form: QuestionForm): Promise<Questio
     option4: options[3]?.option_text ? sanitizeString(options[3].option_text) : '',
     option4Image: optionImageUrls[3] || '',
     option4Correct: options[3]?.is_correct || false,
-    explaination: '',
-    explainationImage: ''
+    explanation: '',
+    explanationImage: ''
   };
   
-  // Backend expects 'explaination' spelling
-  payload.explaination = form.explanation && form.explanation.trim()
+  // Explanation text
+  payload.explanation = form.explanation && form.explanation.trim()
     ? sanitizeString(form.explanation) 
     : '';
   
-  // Add explanation image (note the spelling 'explainationImage')
-  payload.explainationImage = explanationImageUrl || '';
+  // Add explanation image
+  payload.explanationImage = explanationImageUrl || '';
   
   return payload;
 };
@@ -130,27 +130,27 @@ export const createQuestionFormData = (form: QuestionForm): FormData => {
   
   // Options with correct fields first, then text
   // Option 1
-  formData.append('option1Correct', (formOptions[0]?.is_correct ? '1' : '0'));
+  formData.append('option1Correct', (formOptions[0]?.is_correct ? 'true' : 'false'));
   const opt1Text = formOptions[0]?.option_text ? sanitizeString(formOptions[0].option_text) : '';
   formData.append('option1', opt1Text);
   
   // Option 2
-  formData.append('option2Correct', (formOptions[1]?.is_correct ? '1' : '0'));
+  formData.append('option2Correct', (formOptions[1]?.is_correct ? 'true' : 'false'));
   const opt2Text = formOptions[1]?.option_text ? sanitizeString(formOptions[1].option_text) : '';
   formData.append('option2', opt2Text);
   
   // Option 3
-  formData.append('option3Correct', (formOptions[2]?.is_correct ? '1' : '0'));
+  formData.append('option3Correct', (formOptions[2]?.is_correct ? 'true' : 'false'));
   const opt3Text = formOptions[2]?.option_text ? sanitizeString(formOptions[2].option_text) : '';
   formData.append('option3', opt3Text);
   
   // Option 4
-  formData.append('option4Correct', (formOptions[3]?.is_correct ? '1' : '0'));
+  formData.append('option4Correct', (formOptions[3]?.is_correct ? 'true' : 'false'));
   const opt4Text = formOptions[3]?.option_text ? sanitizeString(formOptions[3].option_text) : '';
   formData.append('option4', opt4Text);
   
-  // Explanation (note the spelling 'explaination' as per backend)
-  formData.append('explaination', form.explanation && form.explanation.trim() 
+  // Explanation text
+  formData.append('explanation', form.explanation && form.explanation.trim() 
     ? sanitizeString(form.explanation) 
     : '');
   
@@ -175,7 +175,7 @@ export const createQuestionFormData = (form: QuestionForm): FormData => {
   // Explanation image last (only if exists)
   if (form.explanationImage) {
     validateImageFile(form.explanationImage);
-    formData.append('explainationImage', form.explanationImage);
+    formData.append('explanationImage', form.explanationImage);
   }
   
   return formData;
@@ -203,10 +203,10 @@ export const createQuestionPayloadWithoutImages = (form: QuestionForm): Question
     option4: options[3]?.option_text ? sanitizeString(options[3].option_text) : '',
     option4Image: '',
     option4Correct: options[3]?.is_correct || false,
-    explaination: form.explanation && form.explanation.trim() 
+    explanation: form.explanation && form.explanation.trim() 
       ? sanitizeString(form.explanation) 
       : '',
-    explainationImage: ''
+    explanationImage: ''
   };
   
   return payload;

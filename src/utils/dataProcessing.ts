@@ -17,7 +17,7 @@ const resolveImageUrl = (value: any, kind: ImageKind = 'option'): string => {
   let defaultPath = '/image';
   if (!baseFromEnv) {
     if (kind === 'question') defaultPath = '/question-image';
-    else if (kind === 'explanation') defaultPath = '/explaination-image';
+    else if (kind === 'explanation') defaultPath = '/explanation-image';
     else if (kind === 'option') defaultPath = '/option-image';
   }
   const base = (baseFromEnv || `${process.env.REACT_APP_API_BASE_URL || ''}${defaultPath}`).replace(/\/$/, '');
@@ -54,6 +54,7 @@ export const groupQuestionsByQuestionId = (questionRows: QuestionRow[]): Grouped
       const explanation = normalizeText(
         (row as any).explanation 
         ?? (row as any).explaination 
+        ?? (row as any).explanation_text 
         ?? (row as any).explaination_text 
         ?? (row as any).explainationText 
         ?? ''
@@ -86,6 +87,7 @@ export const groupQuestionsByQuestionId = (questionRows: QuestionRow[]): Grouped
     const rowExplanation = normalizeText(
       (row as any).explanation 
       ?? (row as any).explaination 
+      ?? (row as any).explanation_text 
       ?? (row as any).explaination_text 
       ?? (row as any).explainationText 
       ?? ''

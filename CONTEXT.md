@@ -24,12 +24,12 @@ This file captures the current integration context so you can resume quickly.
 11. `option3` (String)
 12. `option4Correct` ("1" or "0")
 13. `option4` (String)
-14. `explaination` (String; spelling as per backend)
+14. `explanation` (String)
 15. `option1Image` (File, optional)
 16. `option2Image` (File, optional)
 17. `option3Image` (File, optional)
 18. `option4Image` (File, optional)
-19. `explainationImage` (File, optional)
+19. `explanationImage` (File, optional)
 
 Notes:
 - Browser sets the multipart boundary automatically (no manual `Content-Type`).
@@ -79,4 +79,3 @@ If not set, generic fallback uses `${REACT_APP_API_BASE_URL}/image/{id}`.
 2. Check DevTools → Network → `uploadquestion` → Form Data: field names and order match list above.
 3. Reload list view: question, options, explanation text, and images should appear.
 4. If images don’t load, set `REACT_APP_*_IMAGE_BASE_URL` envs and restart.
-

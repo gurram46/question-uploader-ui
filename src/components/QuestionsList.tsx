@@ -181,7 +181,7 @@ const QuestionsList: React.FC = () => {
                 const topicName = (question as any).topicName ?? question.topic_name;
                 const questionText = (question as any).questionText ?? question.question_text;
                 const questionImage = (question as any).questionImage ?? (question as any).question_image ?? '';
-                const explanation = (question as any).explanation ?? (question as any).explaination ?? '';
+                const explanation = (question as any).explanation ?? (question as any).explaination ?? (question as any).explanation_text ?? '';
                 const explanationImage = (question as any).explanationImage ?? (question as any).explainationImage ?? (question as any).explanation_image ?? '';
 
                 return (

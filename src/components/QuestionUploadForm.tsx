@@ -1,30 +1,14 @@
-import React, { useState, useCallback } from 'react';
-import { QuestionForm, FormOption, ValidationError } from '../types';
+import React, { useCallback } from 'react';
+import { QuestionForm, FormOption } from '../types';
 import { validateQuestionForm } from '../utils/validation';
 import { createQuestionFormData } from '../services/uploadService';
 import { questionApi } from '../services/api';
 import { useToast } from '../hooks/useToast';
+import { useQuestionForm } from '../context/QuestionFormContext';
 
 const QuestionUploadForm: React.FC = () => {
   const { showSuccess, showError } = useToast();
-  const [isLoading, setIsLoading] = useState(false);
-  const [validationErrors, setValidationErrors] = useState<ValidationError[]>([]);
-
-  const [form, setForm] = useState<QuestionForm>({
-    subjectName: '',
-    topicName: '',
-    difficultyLevel: 1,
-    questionText: '',
-    questionImage: null,
-    options: [
-      { option_text: '', option_image: null, is_correct: false },
-      { option_text: '', option_image: null, is_correct: false },
-      { option_text: '', option_image: null, is_correct: false },
-      { option_text: '', option_image: null, is_correct: false },
-    ],
-    explanation: '',
-    explanationImage: null,
-  });
+  const { form, setForm, validationErrors, setValidationErrors, isLoading, setIsLoading } = useQuestionForm();
 
   const handleInputChange = useCallback((field: keyof QuestionForm, value: string | number) => {
     setForm(prev => ({
@@ -81,9 +65,9 @@ const QuestionUploadForm: React.FC = () => {
 
       // Reset form on success
       setForm({
-        subjectName: '',
-        topicName: '',
-        difficultyLevel: 1,
+        subjectName: form.subjectName,
+        topicName: form.topicName,
+        difficultyLevel: form.difficultyLevel,
         questionText: '',
         questionImage: null,
         options: [

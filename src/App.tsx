@@ -4,6 +4,7 @@ import QuestionsList from './components/QuestionsList';
 import ToastContainer from './components/ToastContainer';
 import { useToast } from './hooks/useToast';
 import './App.css';
+import { QuestionFormProvider } from './context/QuestionFormContext';
 
 type View = 'upload' | 'list';
 
@@ -49,10 +50,12 @@ function App() {
       </nav>
 
       {/* Main Content */}
-      <main className="py-8">
-        {currentView === 'upload' && <QuestionUploadForm />}
-        {currentView === 'list' && <QuestionsList />}
-      </main>
+      <QuestionFormProvider>
+        <main className="py-8">
+          {currentView === 'upload' && <QuestionUploadForm />}
+          {currentView === 'list' && <QuestionsList />}
+        </main>
+      </QuestionFormProvider>
 
       {/* Footer */}
       <footer className="bg-white border-t border-gray-200 py-6 mt-12">

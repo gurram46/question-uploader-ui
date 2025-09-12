@@ -103,7 +103,7 @@ export const createQuestionPayload = async (form: QuestionForm): Promise<Questio
   return payload;
 };
 
-export const createQuestionFormData = (form: QuestionForm): FormData => {
+export const createQuestionFormData = (form: QuestionForm, opts?: { difficultyId?: string }): FormData => {
   const formData = new FormData();
   
   // Match exact field order expected by backend:
@@ -124,30 +124,35 @@ export const createQuestionFormData = (form: QuestionForm): FormData => {
   // Ensure difficultyLevel is a clean integer string (1..10)
   const difficulty = Math.max(1, Math.min(10, Number(form.difficultyLevel) || 1));
   formData.append('difficultyLevel', difficulty.toString());
+  if (opts?.difficultyId) {
+    formData.append('difficultyId', opts.difficultyId);
+  }
   formData.append('questionText', sanitizeString(form.questionText));
   
-  const formOptions = form.options.slice(0, 4);
-  
-  // Options with correct fields first, then text
+  // Normalize options so that option1 is guaranteed to be filled if any option exists
+  const rawOptions = form.options.slice(0, 4).map(o => ({
+    text: (o?.option_text || '').trim(),
+    img: o?.option_image || null,
+    correct: !!o?.is_correct,
+  }));
+
+  const filled = rawOptions.filter(o => o.text || o.img);
+  const padded = [...filled];
+  while (padded.length < 4) padded.push({ text: '', img: null, correct: false });
+  const opts4 = padded.slice(0, 4);
+
   // Option 1
-  formData.append('option1Correct', (formOptions[0]?.is_correct ? 'true' : 'false'));
-  const opt1Text = formOptions[0]?.option_text ? sanitizeString(formOptions[0].option_text) : '';
-  formData.append('option1', opt1Text);
-  
+  formData.append('option1Correct', (opts4[0].correct ? 'true' : 'false'));
+  formData.append('option1', opts4[0].text ? sanitizeString(opts4[0].text) : '');
   // Option 2
-  formData.append('option2Correct', (formOptions[1]?.is_correct ? 'true' : 'false'));
-  const opt2Text = formOptions[1]?.option_text ? sanitizeString(formOptions[1].option_text) : '';
-  formData.append('option2', opt2Text);
-  
+  formData.append('option2Correct', (opts4[1].correct ? 'true' : 'false'));
+  formData.append('option2', opts4[1].text ? sanitizeString(opts4[1].text) : '');
   // Option 3
-  formData.append('option3Correct', (formOptions[2]?.is_correct ? 'true' : 'false'));
-  const opt3Text = formOptions[2]?.option_text ? sanitizeString(formOptions[2].option_text) : '';
-  formData.append('option3', opt3Text);
-  
+  formData.append('option3Correct', (opts4[2].correct ? 'true' : 'false'));
+  formData.append('option3', opts4[2].text ? sanitizeString(opts4[2].text) : '');
   // Option 4
-  formData.append('option4Correct', (formOptions[3]?.is_correct ? 'true' : 'false'));
-  const opt4Text = formOptions[3]?.option_text ? sanitizeString(formOptions[3].option_text) : '';
-  formData.append('option4', opt4Text);
+  formData.append('option4Correct', (opts4[3].correct ? 'true' : 'false'));
+  formData.append('option4', opts4[3].text ? sanitizeString(opts4[3].text) : '');
   
   // Explanation text
   formData.append('explanation', form.explanation && form.explanation.trim() 
@@ -155,21 +160,21 @@ export const createQuestionFormData = (form: QuestionForm): FormData => {
     : '');
   
   // Option images (only append if files exist)
-  if (formOptions[0]?.option_image) {
-    validateImageFile(formOptions[0].option_image);
-    formData.append('option1Image', formOptions[0].option_image);
+  if (opts4[0].img) {
+    validateImageFile(opts4[0].img);
+    formData.append('option1Image', opts4[0].img);
   }
-  if (formOptions[1]?.option_image) {
-    validateImageFile(formOptions[1].option_image);
-    formData.append('option2Image', formOptions[1].option_image);
+  if (opts4[1].img) {
+    validateImageFile(opts4[1].img);
+    formData.append('option2Image', opts4[1].img);
   }
-  if (formOptions[2]?.option_image) {
-    validateImageFile(formOptions[2].option_image);
-    formData.append('option3Image', formOptions[2].option_image);
+  if (opts4[2].img) {
+    validateImageFile(opts4[2].img);
+    formData.append('option3Image', opts4[2].img);
   }
-  if (formOptions[3]?.option_image) {
-    validateImageFile(formOptions[3].option_image);
-    formData.append('option4Image', formOptions[3].option_image);
+  if (opts4[3].img) {
+    validateImageFile(opts4[3].img);
+    formData.append('option4Image', opts4[3].img);
   }
   
   // Explanation image last (only if exists)

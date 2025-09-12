@@ -1,8 +1,8 @@
-import React, { useCallback } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { QuestionForm, FormOption } from '../types';
 import { validateQuestionForm } from '../utils/validation';
 import { createQuestionFormData } from '../services/uploadService';
-import { questionApi } from '../services/api';
+import { questionApi, difficultyApi } from '../services/api';
 import { useToast } from '../hooks/useToast';
 import { useQuestionForm } from '../context/QuestionFormContext';
 
@@ -10,44 +10,120 @@ const QuestionUploadForm: React.FC = () => {
   const { showSuccess, showError } = useToast();
   const { form, setForm, validationErrors, setValidationErrors, isLoading, setIsLoading } = useQuestionForm();
 
+  // Difficulties state (simplified UI)
+  const [isLoadingDifficulties, setIsLoadingDifficulties] = useState(false);
+  const [selectedLevel, setSelectedLevel] = useState<number>(1);
+  const [newDifficultyType, setNewDifficultyType] = useState<string>('');
+  const [levelToNumericId, setLevelToNumericId] = useState<Map<number, number | string>>(new Map());
+  const [isCreatingDifficulty, setIsCreatingDifficulty] = useState(false);
+
+  // Derive numeric ids from existing questions only (no hashed id support here)
+  useEffect(() => {
+    const fetchAll = async () => {
+      setIsLoadingDifficulties(true);
+      try {
+        const rows = await questionApi.getQuestions();
+        const byLevel: Map<number, number | string> = new Map();
+        rows.forEach((r: any) => {
+          const lvl = Number(r?.difficulty_level ?? 0);
+          const id = (r as any)?.difficulty_id;
+          if (Number.isFinite(lvl) && lvl >= 1 && id !== undefined && id !== null) {
+            if (!byLevel.has(lvl)) byLevel.set(lvl, id);
+          }
+        });
+        setLevelToNumericId(byLevel);
+        const initialLevel = Number(form.difficultyLevel) || 1;
+        const normalized = [1, 2, 3].includes(initialLevel) ? initialLevel : 1;
+        setSelectedLevel(normalized);
+      } catch (_) {
+        // Silent; UI still usable with fallback
+      } finally {
+        setIsLoadingDifficulties(false);
+      }
+    };
+    fetchAll();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [form.difficultyLevel]);
+
+  // Resolve numeric id (level-only)
+  const selectedNumericDifficultyId = useMemo(() => {
+    const id = levelToNumericId.get(selectedLevel);
+    if (id === undefined || id === null) return undefined;
+    const n = Number(id);
+    return Number.isFinite(n) ? n : undefined;
+  }, [levelToNumericId, selectedLevel]);
+
+  // Handlers
   const handleInputChange = useCallback((field: keyof QuestionForm, value: string | number) => {
     setForm(prev => ({
       ...prev,
       [field]: value
     }));
     setValidationErrors(prev => prev.filter(error => error.field !== field));
-  }, []);
+  }, [setForm, setValidationErrors]);
 
   const handleFileChange = useCallback((field: keyof QuestionForm, file: File | null) => {
     setForm(prev => ({
       ...prev,
       [field]: file
     }));
-  }, []);
+  }, [setForm]);
 
-  // Handle option changes
   const handleOptionChange = useCallback((index: number, field: keyof FormOption, value: string | File | null | boolean) => {
     setForm(prev => ({
       ...prev,
-      options: prev.options.map((option, i) => 
-        i === index ? { ...option, [field]: value } : option
-      )
+      options: prev.options.map((option, i) => i === index ? { ...option, [field]: value } : option)
     }));
-    // Clear validation errors for options
     setValidationErrors(prev => prev.filter(error => error.field !== 'options'));
-  }, []);
+  }, [setForm, setValidationErrors]);
 
-  // Get validation error for a field
   const getFieldError = useCallback((field: string): string | undefined => {
     const error = validationErrors.find(err => err.field === field);
     return error?.message;
   }, [validationErrors]);
 
-  // Handle form submission
+  // Create a new difficulty (level + type)
+  const handleCreateDifficulty = useCallback(async () => {
+    const type = newDifficultyType.trim();
+    const lvl = Number(selectedLevel);
+    if (!type) {
+      showError('Please enter a difficulty type (e.g., facts, statements).');
+      return;
+    }
+    if (![1,2,3].includes(lvl)) {
+      showError('Please select a valid level (1, 2, or 3).');
+      return;
+    }
+    try {
+      setIsCreatingDifficulty(true);
+      await difficultyApi.createDifficulty(lvl, type);
+      setNewDifficultyType('');
+      showSuccess(`Difficulty added: Level ${lvl} - ${type}`);
+      // Refetch mapping from questions (new difficulty may not appear until used by some question)
+      try {
+        const rows = await questionApi.getQuestions();
+        const byLevel: Map<number, number | string> = new Map(levelToNumericId);
+        rows.forEach((r: any) => {
+          const l = Number(r?.difficulty_level ?? 0);
+          const id = (r as any)?.difficulty_id;
+          if (Number.isFinite(l) && l >= 1 && id !== undefined && id !== null && !byLevel.has(l)) {
+            byLevel.set(l, id);
+          }
+        });
+        setLevelToNumericId(byLevel);
+      } catch {}
+    } catch (e: any) {
+      const msg = e?.message || 'Failed to create difficulty';
+      showError(msg);
+    } finally {
+      setIsCreatingDifficulty(false);
+    }
+  }, [newDifficultyType, selectedLevel, showError, showSuccess, setIsLoading, levelToNumericId]);
+
+  // Submit
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    
-    // Validate form
+
     const errors = validateQuestionForm(form);
     if (errors.length > 0) {
       setValidationErrors(errors);
@@ -57,13 +133,15 @@ const QuestionUploadForm: React.FC = () => {
 
     setIsLoading(true);
     try {
-      // Create FormData payload (backend expects multipart/form-data)
-      const formData = createQuestionFormData(form);
+      if (selectedNumericDifficultyId === undefined) {
+        showError('Difficulty not configured yet. Please select a difficulty that has a numeric id.');
+        setIsLoading(false);
+        return;
+      }
 
-      // Submit to API (will send as FormData)
+      const formData = createQuestionFormData(form, { difficultyId: String(selectedNumericDifficultyId) });
       await questionApi.uploadQuestion(formData);
 
-      // Reset form on success
       setForm({
         subjectName: form.subjectName,
         topicName: form.topicName,
@@ -80,11 +158,8 @@ const QuestionUploadForm: React.FC = () => {
         explanationImage: null,
       });
       setValidationErrors([]);
-
       showSuccess('Question uploaded successfully!');
-
     } catch (error) {
-      // Error logging is handled by API service
       const errorMessage = error instanceof Error ? error.message : 'Failed to upload question. Please try again.';
       showError(errorMessage);
     } finally {
@@ -96,106 +171,99 @@ const QuestionUploadForm: React.FC = () => {
     <div className="max-w-4xl mx-auto p-6">
       <div className="bg-white rounded-lg shadow-md p-8">
         <h2 className="text-2xl font-bold text-gray-900 mb-6">Upload New Question</h2>
-        
+
         <form onSubmit={handleSubmit} className="space-y-6">
           {/* Subject Name */}
           <div>
-            <label htmlFor="subjectName" className="block text-sm font-medium text-gray-700 mb-2">
-              Subject Name *
-            </label>
+            <label htmlFor="subjectName" className="block text-sm font-medium text-gray-700 mb-2">Subject Name *</label>
             <input
               type="text"
               id="subjectName"
               value={form.subjectName}
               onChange={(e) => handleInputChange('subjectName', e.target.value)}
-              className={`w-full px-3 py-2 border rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-primary-500 ${
-                getFieldError('subjectName') ? 'border-red-500' : 'border-gray-300'
-              }`}
+              className={`w-full px-3 py-2 border rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-primary-500 ${getFieldError('subjectName') ? 'border-red-500' : 'border-gray-300'}`}
               placeholder="Enter subject name (letters only)"
               disabled={isLoading}
             />
-            {getFieldError('subjectName') && (
-              <p className="mt-1 text-sm text-red-600">{getFieldError('subjectName')}</p>
-            )}
+            {getFieldError('subjectName') && (<p className="mt-1 text-sm text-red-600">{getFieldError('subjectName')}</p>)}
           </div>
 
           {/* Topic Name */}
           <div>
-            <label htmlFor="topicName" className="block text-sm font-medium text-gray-700 mb-2">
-              Topic Name *
-            </label>
+            <label htmlFor="topicName" className="block text-sm font-medium text-gray-700 mb-2">Topic Name *</label>
             <input
               type="text"
               id="topicName"
               value={form.topicName}
               onChange={(e) => handleInputChange('topicName', e.target.value)}
-              className={`w-full px-3 py-2 border rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-primary-500 ${
-                getFieldError('topicName') ? 'border-red-500' : 'border-gray-300'
-              }`}
+              className={`w-full px-3 py-2 border rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-primary-500 ${getFieldError('topicName') ? 'border-red-500' : 'border-gray-300'}`}
               placeholder="Enter topic name (letters and numbers)"
               disabled={isLoading}
             />
-            {getFieldError('topicName') && (
-              <p className="mt-1 text-sm text-red-600">{getFieldError('topicName')}</p>
-            )}
+            {getFieldError('topicName') && (<p className="mt-1 text-sm text-red-600">{getFieldError('topicName')}</p>)}
           </div>
 
           {/* Difficulty Level */}
           <div>
-            <label htmlFor="difficultyLevel" className="block text-sm font-medium text-gray-700 mb-2">
-              Difficulty Level *
-            </label>
+            <label htmlFor="difficultyLevel" className="block text-sm font-medium text-gray-700 mb-2">Difficulty Level *</label>
             <select
               id="difficultyLevel"
-              value={form.difficultyLevel}
-              onChange={(e) => handleInputChange('difficultyLevel', parseInt(e.target.value))}
-              className={`w-full px-3 py-2 border rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-primary-500 ${
-                getFieldError('difficultyLevel') ? 'border-red-500' : 'border-gray-300'
-              }`}
+              value={String(selectedLevel)}
+              onChange={(e) => {
+                const v = Number(e.target.value);
+                const level = [1,2,3].includes(v) ? v : 1;
+                setSelectedLevel(level);
+                handleInputChange('difficultyLevel', level);
+              }}
+              className={`w-full px-3 py-2 border rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-primary-500 ${getFieldError('difficultyLevel') ? 'border-red-500' : 'border-gray-300'}`}
               disabled={isLoading}
             >
-              <option value={1}>1</option>
-              <option value={2}>2</option>
-              <option value={3}>3</option>
-              <option value={4}>4</option>
-              <option value={5}>5</option>
-              <option value={6}>6</option>
-              <option value={7}>7</option>
-              <option value={8}>8</option>
-              <option value={9}>9</option>
-              <option value={10}>10</option>
+              {[1,2,3].map(lvl => (
+                <option key={lvl} value={String(lvl)}>{`Level ${lvl}`}</option>
+              ))}
             </select>
-            {getFieldError('difficultyLevel') && (
-              <p className="mt-1 text-sm text-red-600">{getFieldError('difficultyLevel')}</p>
-            )}
+            {getFieldError('difficultyLevel') && (<p className="mt-1 text-sm text-red-600">{getFieldError('difficultyLevel')}</p>)}
+            {isLoadingDifficulties && (<p className="mt-1 text-sm text-gray-500">Loading difficulties...</p>)}
+
+            {/* Add Difficulty Type */}
+            <div className="mt-3 flex gap-2">
+              <input
+                type="text"
+                placeholder="Add difficulty type (e.g., facts)"
+                value={newDifficultyType}
+                onChange={(e) => setNewDifficultyType(e.target.value)}
+                className="flex-1 px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
+                disabled={isLoading}
+              />
+              <button
+                type="button"
+                onClick={handleCreateDifficulty}
+                className="px-4 py-2 rounded-md bg-primary-600 text-white hover:bg-primary-700 disabled:bg-gray-400"
+                disabled={isCreatingDifficulty || !newDifficultyType.trim()}
+              >
+                {isCreatingDifficulty ? 'Adding...' : 'Add'}
+              </button>
+            </div>
           </div>
 
           {/* Question Text */}
           <div>
-            <label htmlFor="questionText" className="block text-sm font-medium text-gray-700 mb-2">
-              Question Text *
-            </label>
+            <label htmlFor="questionText" className="block text-sm font-medium text-gray-700 mb-2">Question Text *</label>
             <textarea
               id="questionText"
               value={form.questionText}
               onChange={(e) => handleInputChange('questionText', e.target.value)}
               rows={4}
-              className={`w-full px-3 py-2 border rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-primary-500 ${
-                getFieldError('questionText') ? 'border-red-500' : 'border-gray-300'
-              }`}
+              className={`w-full px-3 py-2 border rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-primary-500 ${getFieldError('questionText') ? 'border-red-500' : 'border-gray-300'}`}
               placeholder="Enter the question text..."
               disabled={isLoading}
             />
-            {getFieldError('questionText') && (
-              <p className="mt-1 text-sm text-red-600">{getFieldError('questionText')}</p>
-            )}
+            {getFieldError('questionText') && (<p className="mt-1 text-sm text-red-600">{getFieldError('questionText')}</p>)}
           </div>
 
           {/* Question Image */}
           <div>
-            <label htmlFor="questionImage" className="block text-sm font-medium text-gray-700 mb-2">
-              Question Image (Optional)
-            </label>
+            <label htmlFor="questionImage" className="block text-sm font-medium text-gray-700 mb-2">Question Image (Optional)</label>
             <input
               type="file"
               id="questionImage"
@@ -210,22 +278,16 @@ const QuestionUploadForm: React.FC = () => {
           {/* Options */}
           <div>
             <h3 className="text-lg font-medium text-gray-900 mb-4">Answer Options *</h3>
-            <p className="text-sm text-gray-600 mb-4">
-              Fill at least 2 options and mark at least 1 as correct. Each option must have either text or an image.
-            </p>
-            
+            <p className="text-sm text-gray-600 mb-4">Fill at least 2 options and mark at least 1 as correct. Each option must have either text or an image.</p>
+
             <div className="space-y-3">
               {form.options.map((option, index) => (
                 <div key={index} className="border border-gray-200 rounded-lg p-4">
                   <div className="flex items-center gap-3">
-                    {/* Option Number */}
                     <div className="flex-shrink-0">
-                      <span className="inline-flex items-center justify-center h-8 w-8 rounded-full bg-gray-100 text-sm font-medium text-gray-700">
-                        {index + 1}
-                      </span>
+                      <span className="inline-flex items-center justify-center h-8 w-8 rounded-full bg-gray-100 text-sm font-medium text-gray-700">{index + 1}</span>
                     </div>
-                    
-                    {/* Option Text Input */}
+
                     <div className="flex-grow">
                       <input
                         type="text"
@@ -236,13 +298,10 @@ const QuestionUploadForm: React.FC = () => {
                         disabled={isLoading}
                       />
                     </div>
-                    
-                    {/* Image Upload */}
+
                     <div className="flex-shrink-0">
                       <label className="cursor-pointer inline-flex items-center px-3 py-2 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 focus-within:outline-none focus-within:ring-2 focus-within:ring-offset-2 focus-within:ring-primary-500">
-                        <svg className="mr-2 h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
-                        </svg>
+                        <svg className="mr-2 h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>
                         {option.option_image ? 'Change' : 'Add Image'}
                         <input
                           type="file"
@@ -253,18 +312,10 @@ const QuestionUploadForm: React.FC = () => {
                         />
                       </label>
                       {option.option_image && (
-                        <button
-                          type="button"
-                          onClick={() => handleOptionChange(index, 'option_image', null)}
-                          className="ml-2 text-sm text-red-600 hover:text-red-500"
-                          disabled={isLoading}
-                        >
-                          Remove
-                        </button>
+                        <button type="button" onClick={() => handleOptionChange(index, 'option_image', null)} className="ml-2 text-sm text-red-600 hover:text-red-500" disabled={isLoading}>Remove</button>
                       )}
                     </div>
-                    
-                    {/* Correct Answer Checkbox */}
+
                     <div className="flex-shrink-0">
                       <label className="flex items-center">
                         <input
@@ -278,48 +329,35 @@ const QuestionUploadForm: React.FC = () => {
                       </label>
                     </div>
                   </div>
-                  
-                  {/* Show image filename if selected */}
+
                   {option.option_image && (
-                    <div className="mt-2 ml-11 text-sm text-gray-500">
-                      Image: {option.option_image.name}
-                    </div>
+                    <div className="mt-2 ml-11 text-sm text-gray-500">Image: {option.option_image.name}</div>
                   )}
                 </div>
               ))}
             </div>
-            
-            {getFieldError('options') && (
-              <p className="mt-2 text-sm text-red-600">{getFieldError('options')}</p>
-            )}
+
+            {getFieldError('options') && (<p className="mt-2 text-sm text-red-600">{getFieldError('options')}</p>)}
           </div>
 
           {/* Explanation */}
           <div>
-            <label htmlFor="explanation" className="block text-sm font-medium text-gray-700 mb-2">
-              Explanation (Optional)
-            </label>
+            <label htmlFor="explanation" className="block text-sm font-medium text-gray-700 mb-2">Explanation (Optional)</label>
             <textarea
               id="explanation"
               value={form.explanation}
               onChange={(e) => handleInputChange('explanation', e.target.value)}
               rows={3}
-              className={`w-full px-3 py-2 border rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-primary-500 ${
-                getFieldError('explanation') ? 'border-red-500' : 'border-gray-300'
-              }`}
+              className={`w-full px-3 py-2 border rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-primary-500 ${getFieldError('explanation') ? 'border-red-500' : 'border-gray-300'}`}
               placeholder="Optional explanation for the answer..."
               disabled={isLoading}
             />
-            {getFieldError('explanation') && (
-              <p className="mt-1 text-sm text-red-600">{getFieldError('explanation')}</p>
-            )}
+            {getFieldError('explanation') && (<p className="mt-1 text-sm text-red-600">{getFieldError('explanation')}</p>)}
           </div>
 
           {/* Explanation Image */}
           <div>
-            <label htmlFor="explanationImage" className="block text-sm font-medium text-gray-700 mb-2">
-              Explanation Image (Optional)
-            </label>
+            <label htmlFor="explanationImage" className="block text-sm font-medium text-gray-700 mb-2">Explanation Image (Optional)</label>
             <input
               type="file"
               id="explanationImage"
@@ -334,12 +372,8 @@ const QuestionUploadForm: React.FC = () => {
           <div className="pt-4">
             <button
               type="submit"
-              disabled={isLoading}
-              className={`w-full flex justify-center py-3 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white ${
-                isLoading 
-                  ? 'bg-gray-400 cursor-not-allowed' 
-                  : 'bg-primary-600 hover:bg-primary-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500'
-              }`}
+              disabled={isLoading || selectedNumericDifficultyId === undefined}
+              className={`w-full flex justify-center py-3 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white ${isLoading ? 'bg-gray-400 cursor-not-allowed' : 'bg-primary-600 hover:bg-primary-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500'}`}
             >
               {isLoading ? (
                 <>
@@ -361,3 +395,4 @@ const QuestionUploadForm: React.FC = () => {
 };
 
 export default QuestionUploadForm;
+export {};

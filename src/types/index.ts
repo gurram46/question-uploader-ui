@@ -53,6 +53,13 @@ export interface GroupedQuestion {
   created_at?: string;
 }
 
+// Difficulties
+export interface Difficulty {
+  difficulty_id?: string; // encoded id from backend
+  difficulty_level: number;
+  difficulty_type: string;
+}
+
 // Form types
 export interface FormOption {
   option_text: string;

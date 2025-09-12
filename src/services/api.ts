@@ -1,5 +1,5 @@
 import axios, { AxiosResponse } from 'axios';
-import { QuestionRow, ApiResponse, QuestionPayload } from '../types';
+import { QuestionRow, ApiResponse, QuestionPayload, Difficulty } from '../types';
 
 const API_BASE_URL = process.env.REACT_APP_API_BASE_URL || 'http://localhost:3001';
 
@@ -133,3 +133,46 @@ export const questionApi = {
 };
 
 export default apiClient;
+
+// Difficulty APIs
+export const difficultyApi = {
+  getDifficulties: async (): Promise<Difficulty[]> => {
+    try {
+      const response: AxiosResponse<Difficulty[]> = await apiClient.get('/getdifficulties');
+      const raw = response.data || [];
+      // Normalize to ensure level is a number and type is string
+      return raw.map((d: any) => ({
+        difficulty_id: d?.difficulty_id ? String(d.difficulty_id) : undefined,
+        difficulty_level: Number(d?.difficulty_level),
+        difficulty_type: String(d?.difficulty_type ?? ''),
+      }));
+    } catch (error) {
+      if (axios.isAxiosError(error) && error.response?.data?.message) {
+        throw new Error(error.response.data.message);
+      }
+      throw new Error('Failed to fetch difficulties');
+    }
+  },
+
+  createDifficulty: async (difficultyLevel: number, difficultyType: string): Promise<ApiResponse<any>> => {
+    try {
+      const response: AxiosResponse<ApiResponse<any>> = await apiClient.post(
+        '/createdifficulty',
+        // Some backends expect headers only; send both headers and a minimal body
+        { difficultyLevel, difficultyType },
+        { headers: { difficultyLevel: String(difficultyLevel), difficultyType } }
+      );
+      return response.data;
+    } catch (error) {
+      if (axios.isAxiosError(error)) {
+        if (error.response?.data?.message) {
+          throw new Error(error.response.data.message);
+        }
+        if (error.response?.data?.error) {
+          throw new Error(error.response.data.error);
+        }
+      }
+      throw new Error('Failed to create difficulty');
+    }
+  },
+};

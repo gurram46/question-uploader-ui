@@ -182,7 +182,7 @@ const QuestionsList: React.FC = () => {
             <div className="md:col-span-3">
               <input
                 type="text"
-                placeholder="Search questions, subjects, or topics..."
+                placeholder="Search questions, subjects, chapters, or topics..."
                 className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500"
                 onChange={(e) => debouncedSetSearchTerm(e.target.value)}
               />

@@ -195,6 +195,7 @@ const QuestionsList: React.FC = () => {
               {filteredQuestions.map((question) => {
                 const isExpanded = expandedQuestions.has(question.question_id);
                 const difficultyInfo = getDifficultyInfo(question.difficulty_level);
+                const difficultyType = (question as any).difficulty_type ?? '';
                 // Normalize naming differences from backend (camelCase vs snake_case)
                 const subjectName = (question as any).subjectName ?? question.subject_name;
                 const topicName = (question as any).topicName ?? question.topic_name;
@@ -220,6 +221,11 @@ const QuestionsList: React.FC = () => {
                             <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${difficultyInfo.color}`}>
                               {difficultyInfo.text}
                             </span>
+                            {difficultyType && (
+                              <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-800">
+                                {difficultyType}
+                              </span>
+                            )}
                           </div>
                           <p className="text-gray-900 font-medium line-clamp-2">
                             {questionText}

@@ -42,6 +42,7 @@ export interface GroupedQuestion {
   subject_name: string;
   topic_name: string;
   difficulty_level?: number;
+  difficulty_type?: string;
   question_text: string;
   question_image?: string;
   options: Array<{

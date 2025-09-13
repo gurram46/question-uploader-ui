@@ -49,6 +49,7 @@ export const groupQuestionsByQuestionId = (questionRows: QuestionRow[]): Grouped
           difficultyLevel = parsed;
         }
       }
+      const difficultyType: string = normalizeText((row as any).difficulty_type ?? (row as any).difficultyType ?? '');
       
       // Normalize explanation fields (multiple spellings/styles)
       const explanation = normalizeText(
@@ -71,6 +72,7 @@ export const groupQuestionsByQuestionId = (questionRows: QuestionRow[]): Grouped
         subject_name: row.subject_name,
         topic_name: row.topic_name,
         difficulty_level: difficultyLevel,
+        difficulty_type: difficultyType || undefined,
         question_text: (row as any).question_text ?? (row as any).questionText ?? '',
         question_image: resolveImageUrl(questionImage, 'question'),
         options: [],

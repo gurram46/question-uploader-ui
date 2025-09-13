@@ -10,11 +10,10 @@ const QuestionUploadForm: React.FC = () => {
   const { showSuccess, showError } = useToast();
   const { form, setForm, validationErrors, setValidationErrors, isLoading, setIsLoading } = useQuestionForm();
 
-  // Difficulty inputs (frontend-only flow)
+  // Difficulty selection sourced from backend
   const [selectedLevel, setSelectedLevel] = useState<number>(1);
-  // Difficulty options sourced from existing questions (ensures numeric IDs)
-  const [difficultyOptions, setDifficultyOptions] = useState<Array<{ id: number; level: number; type: string }>>([]);
-  const [selectedDifficultyId, setSelectedDifficultyId] = useState<number | undefined>(undefined);
+  const [difficultyOptions, setDifficultyOptions] = useState<Array<{ idStr: string; idNum?: number; level: number; type: string }>>([]);
+  const [selectedDifficultyIdStr, setSelectedDifficultyIdStr] = useState<string | undefined>(undefined);
 
   const handleInputChange = useCallback((field: keyof QuestionForm, value: string | number) => {
     setForm(prev => ({
@@ -44,32 +43,35 @@ const QuestionUploadForm: React.FC = () => {
     return error?.message;
   }, [validationErrors]);
 
-  // Load difficulty options; prefer /getdifficulties (raw ids), fallback to /getquestions
+  // Load difficulty options; prefer /getdifficulties (raw/encoded ids), fallback to /getquestions
   useEffect(() => {
     let cancelled = false;
     (async () => {
       try {
         const diffs = await difficultyApi.getDifficulties();
-        const uniq = new Map<number, { id: number; level: number; type: string }>();
+        const uniq = new Map<string, { idStr: string; idNum?: number; level: number; type: string }>();
         diffs.forEach((d: any) => {
-          const id = Number(d?.difficulty_id_raw ?? d?.difficulty_id);
           const lvl = Number(d?.difficulty_level);
           const type = String(d?.difficulty_type || '');
-          if (Number.isFinite(id) && Number.isFinite(lvl) && type) {
-            if (!uniq.has(id)) uniq.set(id, { id, level: lvl, type });
+          const rawMaybe = d?.difficulty_id_raw ?? (typeof d?.difficulty_id === 'number' ? d.difficulty_id : undefined);
+          const idNum = Number.isFinite(Number(rawMaybe)) ? Number(rawMaybe) : undefined;
+          const idStr = (d?.difficulty_id !== undefined) ? String(d.difficulty_id) : (idNum !== undefined ? String(idNum) : '');
+          if (idStr && Number.isFinite(lvl) && type) {
+            if (!uniq.has(idStr)) uniq.set(idStr, { idStr, idNum, level: lvl, type });
           }
         });
         let all = Array.from(uniq.values());
         // Fallback to /getquestions if nothing usable returned
         if (all.length === 0) {
           const rows = await questionApi.getQuestions();
-          const uniqQ = new Map<number, { id: number; level: number; type: string }>();
+          const uniqQ = new Map<string, { idStr: string; idNum?: number; level: number; type: string }>();
           rows.forEach((r: any) => {
-            const id = Number(r?.difficulty_id);
+            const idNumQ = Number(r?.difficulty_id);
             const lvl = Number(r?.difficulty_level);
             const type = String(r?.difficulty_type || '');
-            if (Number.isFinite(id) && Number.isFinite(lvl) && type) {
-              if (!uniqQ.has(id)) uniqQ.set(id, { id, level: lvl, type });
+            if (Number.isFinite(idNumQ) && Number.isFinite(lvl) && type) {
+              const idStrQ = String(idNumQ);
+              if (!uniqQ.has(idStrQ)) uniqQ.set(idStrQ, { idStr: idStrQ, idNum: idNumQ, level: lvl, type });
             }
           });
           all = Array.from(uniqQ.values());
@@ -85,7 +87,7 @@ const QuestionUploadForm: React.FC = () => {
   // Whenever level changes, default to first available difficulty for that level
   useEffect(() => {
     const match = difficultyOptions.find(d => d.level === Number(selectedLevel));
-    setSelectedDifficultyId(match?.id);
+    setSelectedDifficultyIdStr(match?.idStr);
   }, [selectedLevel, difficultyOptions]);
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -99,16 +101,17 @@ const QuestionUploadForm: React.FC = () => {
     }
 
     // Ensure a difficulty (with numeric ID) is selected
-    const numericDifficultyId = Number(selectedDifficultyId);
-    if (!Number.isFinite(numericDifficultyId)) {
-      showError('No existing difficulty for this level. Please choose a level that has at least one difficulty.');
+    const selected = difficultyOptions.find(d => d.idStr === selectedDifficultyIdStr);
+    if (!selected) {
+      showError('Please select a difficulty.');
       return;
     }
 
     setIsLoading(true);
     try {
-      // Upload with selected numeric difficultyId
-      const formData = createQuestionFormData(form, { difficultyId: String(numericDifficultyId) });
+      // Upload with selected difficulty id (prefer numeric; else use idStr)
+      const toSend = selected.idNum !== undefined ? String(selected.idNum) : selected.idStr;
+      const formData = createQuestionFormData(form, { difficultyId: toSend });
       await questionApi.uploadQuestion(formData);
 
       setForm({
@@ -127,7 +130,7 @@ const QuestionUploadForm: React.FC = () => {
         explanationImage: null,
       });
       setValidationErrors([]);
-      setSelectedDifficultyId(undefined);
+      setSelectedDifficultyIdStr(undefined);
       showSuccess('Question uploaded successfully!');
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Failed to upload question. Please try again.';
@@ -138,9 +141,9 @@ const QuestionUploadForm: React.FC = () => {
   };
 
   return (
-    <div className="max-w-4xl mx-auto p-6">
-      <div className="bg-white rounded-lg shadow-md p-8">
-        <h2 className="text-2xl font-bold text-gray-900 mb-6">Upload New Question</h2>
+    <div className="max-w-4xl mx-auto px-4 sm:px-6 py-6">
+      <div className="bg-white rounded-lg shadow-md p-4 sm:p-6 md:p-8">
+        <h2 className="text-xl sm:text-2xl font-bold text-gray-900 mb-6">Upload New Question</h2>
 
         <form onSubmit={handleSubmit} className="space-y-6">
           {/* Subject Name */}
@@ -173,49 +176,30 @@ const QuestionUploadForm: React.FC = () => {
             {getFieldError('topicName') && (<p className="mt-1 text-sm text-red-600">{getFieldError('topicName')}</p>)}
           </div>
 
-          {/* Difficulty Level */}
+          {/* Difficulty Selection */}
           <div>
-            <label htmlFor="difficultyLevel" className="block text-sm font-medium text-gray-700 mb-2">Difficulty Level *</label>
+            <label htmlFor="difficulty" className="block text-sm font-medium text-gray-700 mb-2">Difficulty (Level — Type) *</label>
             <select
-              id="difficultyLevel"
-              value={String(selectedLevel)}
+              id="difficulty"
+              value={selectedDifficultyIdStr ?? ''}
               onChange={(e) => {
-                const v = Number(e.target.value);
-                const level = [1,2,3].includes(v) ? v : 1;
-                setSelectedLevel(level);
-                handleInputChange('difficultyLevel', level);
+                const idStr = e.target.value || undefined;
+                setSelectedDifficultyIdStr(idStr);
+                const chosen = difficultyOptions.find(d => d.idStr === idStr);
+                if (chosen) {
+                  setSelectedLevel(chosen.level);
+                  handleInputChange('difficultyLevel', chosen.level);
+                }
               }}
               className={`w-full px-3 py-2 border rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-primary-500 ${getFieldError('difficultyLevel') ? 'border-red-500' : 'border-gray-300'}`}
               disabled={isLoading}
             >
-              {[1,2,3].map(lvl => (
-                <option key={lvl} value={String(lvl)}>{`Level ${lvl}`}</option>
+              <option value="">Select difficulty</option>
+              {difficultyOptions.map(d => (
+                <option key={d.idStr} value={d.idStr}>{`Level ${d.level} — ${d.type}`}</option>
               ))}
             </select>
             {getFieldError('difficultyLevel') && (<p className="mt-1 text-sm text-red-600">{getFieldError('difficultyLevel')}</p>)}
-
-            {/* Difficulty Type (existing only, ensures numeric id) */}
-            <div className="mt-3">
-              <label htmlFor="difficultyType" className="block text-sm font-medium text-gray-700 mb-2">Difficulty Type *</label>
-              <select
-                id="difficultyType"
-                value={selectedDifficultyId !== undefined ? String(selectedDifficultyId) : ''}
-                onChange={(e) => {
-                  const val = e.target.value;
-                  const id = val ? Number(val) : undefined;
-                  setSelectedDifficultyId(id);
-                }}
-                className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
-                disabled={isLoading}
-              >
-                <option value="">Select a difficulty type</option>
-                {difficultyOptions
-                  .filter(d => d.level === Number(selectedLevel))
-                  .map(d => (
-                    <option key={d.id} value={String(d.id)}>{d.type}</option>
-                  ))}
-              </select>
-            </div>
           </div>
 
           {/* Question Text */}
@@ -255,12 +239,12 @@ const QuestionUploadForm: React.FC = () => {
             <div className="space-y-3">
               {form.options.map((option, index) => (
                 <div key={index} className="border border-gray-200 rounded-lg p-4">
-                  <div className="flex items-center gap-3">
-                    <div className="flex-shrink-0">
+                  <div className="grid grid-cols-1 sm:grid-cols-12 gap-3 items-center">
+                    <div className="sm:col-span-1">
                       <span className="inline-flex items-center justify-center h-8 w-8 rounded-full bg-gray-100 text-sm font-medium text-gray-700">{index + 1}</span>
                     </div>
 
-                    <div className="flex-grow">
+                    <div className="sm:col-span-7">
                       <input
                         type="text"
                         value={option.option_text}
@@ -271,8 +255,8 @@ const QuestionUploadForm: React.FC = () => {
                       />
                     </div>
 
-                    <div className="flex-shrink-0">
-                      <label className="cursor-pointer inline-flex items-center px-3 py-2 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 focus-within:outline-none focus-within:ring-2 focus-within:ring-offset-2 focus-within:ring-primary-500">
+                    <div className="sm:col-span-3">
+                      <label className="w-full sm:w-auto justify-center sm:justify-start cursor-pointer inline-flex items-center px-3 py-2 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 focus-within:outline-none focus-within:ring-2 focus-within:ring-offset-2 focus-within:ring-primary-500">
                         <svg className="mr-2 h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>
                         {option.option_image ? 'Change' : 'Add Image'}
                         <input
@@ -288,7 +272,7 @@ const QuestionUploadForm: React.FC = () => {
                       )}
                     </div>
 
-                    <div className="flex-shrink-0">
+                    <div className="sm:col-span-1">
                       <label className="flex items-center">
                         <input
                           type="checkbox"
@@ -303,7 +287,7 @@ const QuestionUploadForm: React.FC = () => {
                   </div>
 
                   {option.option_image && (
-                    <div className="mt-2 ml-11 text-sm text-gray-500">Image: {option.option_image.name}</div>
+                    <div className="mt-2 sm:ml-11 text-sm text-gray-500 break-words">Image: {option.option_image.name}</div>
                   )}
                 </div>
               ))}

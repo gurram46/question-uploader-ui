@@ -90,7 +90,7 @@ const QuestionsList: React.FC = () => {
 
   if (loading) {
     return (
-      <div className="max-w-6xl mx-auto p-6">
+      <div className="max-w-6xl mx-auto px-4 sm:px-6 py-6">
         <div className="flex justify-center items-center h-64">
           <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary-600"></div>
           <span className="ml-3 text-gray-600">Loading questions...</span>
@@ -100,11 +100,11 @@ const QuestionsList: React.FC = () => {
   }
 
   return (
-    <div className="max-w-6xl mx-auto p-6">
+    <div className="max-w-6xl mx-auto px-4 sm:px-6 py-6">
       <div className="bg-white rounded-lg shadow-md">
         {/* Header */}
-        <div className="p-6 border-b border-gray-200">
-          <div className="flex justify-between items-center mb-4">
+        <div className="p-4 sm:p-6 border-b border-gray-200">
+          <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center mb-4 gap-3">
             <h2 className="text-2xl font-bold text-gray-900">Questions Database</h2>
             <div className="text-sm text-gray-600">
               Total: {questions.length} | Filtered: {filteredQuestions.length}
@@ -112,7 +112,7 @@ const QuestionsList: React.FC = () => {
           </div>
 
           {/* Search and Filters */}
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-3 sm:gap-4">
             {/* Search Input */}
             <div className="md:col-span-2">
               <input
@@ -173,7 +173,7 @@ const QuestionsList: React.FC = () => {
         </div>
 
         {/* Questions List */}
-        <div className="p-6">
+        <div className="p-4 sm:p-6">
           {filteredQuestions.length === 0 ? (
             <div className="text-center py-12">
               <div className="text-gray-400 mb-4">
@@ -211,7 +211,7 @@ const QuestionsList: React.FC = () => {
                       className="p-4 bg-gray-50 cursor-pointer hover:bg-gray-100 transition-colors"
                       onClick={() => toggleExpansion(question.question_id)}
                     >
-                      <div className="flex justify-between items-start">
+                      <div className="flex flex-col sm:flex-row sm:justify-between sm:items-start gap-3">
                         <div className="flex-1">
                           <div className="flex items-center space-x-3 mb-2">
                             <span className="text-sm font-medium text-gray-600">#{question.question_id}</span>
@@ -234,7 +234,7 @@ const QuestionsList: React.FC = () => {
                             {question.created_at && formatDate(question.created_at)} • {question.options.length} options
                           </p>
                         </div>
-                        <div className="ml-4 flex items-center space-x-2">
+                        <div className="sm:ml-4 flex items-center space-x-2 sm:justify-end">
                           {pendingDeleteId === question.question_id ? (
                             <div className="flex items-center space-x-2" onClick={(e) => e.stopPropagation()}>
                               <button
@@ -275,14 +275,14 @@ const QuestionsList: React.FC = () => {
 
                     {/* Expanded Content */}
                     {isExpanded && (
-                      <div className="p-6 bg-white border-t border-gray-200">
+                      <div className="p-4 sm:p-6 bg-white border-t border-gray-200">
                         {/* Question Image */}
                         {questionImage && (
                           <div className="mb-6">
                             <img
                               src={questionImage}
                               alt="Question"
-                              className="max-w-md rounded-lg border border-gray-200"
+                              className="w-full max-w-full sm:max-w-md h-auto rounded-lg border border-gray-200"
                             />
                           </div>
                         )}
@@ -294,7 +294,7 @@ const QuestionsList: React.FC = () => {
                             {question.options.map((option, index) => (
                               <div
                                 key={`${question.question_id}-option-${index}`}
-                                className={`flex items-start space-x-3 p-3 rounded-lg ${
+                                className={`flex flex-col sm:flex-row sm:items-start sm:space-x-3 space-y-2 sm:space-y-0 p-3 rounded-lg ${
                                   option.is_correct ? 'bg-green-50 border border-green-200' : 'bg-gray-50'
                                 }`}
                               >
@@ -323,7 +323,7 @@ const QuestionsList: React.FC = () => {
                                     <img
                                       src={option.option_image}
                                       alt={`Option ${index + 1}`}
-                                      className="max-w-xs rounded border border-gray-200"
+                                      className="w-full max-w-full sm:max-w-xs h-auto rounded border border-gray-200"
                                     />
                                   )}
                                 </div>
@@ -343,7 +343,7 @@ const QuestionsList: React.FC = () => {
                               <img
                                 src={explanationImage}
                                 alt="Explanation"
-                                className="max-w-md rounded-lg border border-gray-200"
+                                className="w-full max-w-full sm:max-w-md h-auto rounded-lg border border-gray-200"
                               />
                             )}
                           </div>

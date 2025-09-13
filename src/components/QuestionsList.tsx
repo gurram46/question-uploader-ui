@@ -217,7 +217,7 @@ const QuestionsList: React.FC = () => {
           </div>
 
           {/* Reset Filters Button */}
-          {(searchTerm || selectedSubject || selectedDifficulty) && (
+          {(searchTerm || selectedSubject || selectedDifficultyKey) && (
             <div className="mt-4">
               <button
                 onClick={resetFilters}

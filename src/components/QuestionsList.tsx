@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { GroupedQuestion } from '../types';
-import { questionApi } from '../services/api';
+import { questionApi, difficultyApi } from '../services/api';
 import { groupQuestionsByQuestionId, formatDate, getDifficultyInfo, debounce, filterQuestions, getUniqueSubjects } from '../utils/dataProcessing';
 import { useToast } from '../hooks/useToast';
 
@@ -10,7 +10,9 @@ const QuestionsList: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedSubject, setSelectedSubject] = useState('');
-  const [selectedDifficulty, setSelectedDifficulty] = useState<number | null>(null);
+  // Difficulty filter sourced from backend (level + type)
+  const [difficultyOptions, setDifficultyOptions] = useState<Array<{ key: string; level: number; type: string }>>([]);
+  const [selectedDifficultyKey, setSelectedDifficultyKey] = useState<string>('');
   const [expandedQuestions, setExpandedQuestions] = useState<Set<string>>(new Set());
   const [pendingDeleteId, setPendingDeleteId] = useState<string | null>(null);
 
@@ -34,6 +36,56 @@ const QuestionsList: React.FC = () => {
     fetchQuestions();
   }, [showError]);
 
+  // Load difficulties (level + type). Fallback to building from loaded questions.
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const diffs = await difficultyApi.getDifficulties();
+        const uniq = new Map<string, { key: string; level: number; type: string }>();
+        diffs.forEach((d: any) => {
+          const lvl = Number(d?.difficulty_level);
+          const type = String(d?.difficulty_type || '').trim();
+          if (Number.isFinite(lvl)) {
+            const key = `${lvl}::${type}`;
+            if (!uniq.has(key)) uniq.set(key, { key, level: lvl, type });
+          }
+        });
+        let all = Array.from(uniq.values());
+        if (all.length === 0 && questions.length > 0) {
+          const localUniq = new Map<string, { key: string; level: number; type: string }>();
+          questions.forEach(q => {
+            const lvl = Number(q.difficulty_level || 0);
+            const type = String((q as any).difficulty_type || '').trim();
+            if (Number.isFinite(lvl) && lvl > 0) {
+              const key = `${lvl}::${type}`;
+              if (!localUniq.has(key)) localUniq.set(key, { key, level: lvl, type });
+            }
+          });
+          all = Array.from(localUniq.values());
+        }
+        all.sort((a, b) => (a.level - b.level) || a.type.localeCompare(b.type));
+        if (!cancelled) setDifficultyOptions(all);
+      } catch (err) {
+        // If API fails, try to build from questions if available
+        if (questions.length > 0 && !cancelled) {
+          const localUniq = new Map<string, { key: string; level: number; type: string }>();
+          questions.forEach(q => {
+            const lvl = Number(q.difficulty_level || 0);
+            const type = String((q as any).difficulty_type || '').trim();
+            if (Number.isFinite(lvl) && lvl > 0) {
+              const key = `${lvl}::${type}`;
+              if (!localUniq.has(key)) localUniq.set(key, { key, level: lvl, type });
+            }
+          });
+          const all = Array.from(localUniq.values()).sort((a, b) => (a.level - b.level) || a.type.localeCompare(b.type));
+          setDifficultyOptions(all);
+        }
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [questions]);
+
   // Debounced search to avoid excessive filtering
   const debouncedSetSearchTerm = useMemo(
     () => debounce((term: string) => setSearchTerm(term), 300),
@@ -42,8 +94,20 @@ const QuestionsList: React.FC = () => {
 
   // Filter questions based on search criteria
   const filteredQuestions = useMemo(() => {
-    return filterQuestions(questions, searchTerm, selectedSubject, selectedDifficulty);
-  }, [questions, searchTerm, selectedSubject, selectedDifficulty]);
+    // Use base filter for search + subject
+    const base = filterQuestions(questions, searchTerm, selectedSubject, null);
+    if (!selectedDifficultyKey) return base;
+    const [lvlStr, typeRaw] = selectedDifficultyKey.split('::');
+    const lvl = Number(lvlStr);
+    const type = (typeRaw || '').trim().toLowerCase();
+    return base.filter(q => {
+      const matchesLevel = Number(q.difficulty_level || 0) === lvl;
+      if (!matchesLevel) return false;
+      const qt = String((q as any).difficulty_type || '').trim().toLowerCase();
+      // If filter has type, require exact match; otherwise match by level only
+      return type ? qt === type : true;
+    });
+  }, [questions, searchTerm, selectedSubject, selectedDifficultyKey]);
 
   // Get unique subjects for filter dropdown
   const uniqueSubjects = useMemo(() => {
@@ -67,7 +131,7 @@ const QuestionsList: React.FC = () => {
   const resetFilters = useCallback(() => {
     setSearchTerm('');
     setSelectedSubject('');
-    setSelectedDifficulty(null);
+    setSelectedDifficultyKey('');
   }, []);
 
   const requestDelete = useCallback((questionId: string) => {
@@ -140,21 +204,14 @@ const QuestionsList: React.FC = () => {
             {/* Difficulty Filter */}
             <div>
               <select
-                value={selectedDifficulty || ''}
-                onChange={(e) => setSelectedDifficulty(e.target.value ? parseInt(e.target.value) : null)}
+                value={selectedDifficultyKey}
+                onChange={(e) => setSelectedDifficultyKey(e.target.value)}
                 className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500"
               >
                 <option value="">All Difficulties</option>
-                <option value="1">1 - Very Easy</option>
-                <option value="2">2</option>
-                <option value="3">3 - Easy</option>
-                <option value="4">4</option>
-                <option value="5">5 - Medium</option>
-                <option value="6">6</option>
-                <option value="7">7 - Hard</option>
-                <option value="8">8</option>
-                <option value="9">9</option>
-                <option value="10">10 - Very Hard</option>
+                {difficultyOptions.map(d => (
+                  <option key={d.key} value={d.key}>{`Level ${d.level}${d.type ? ` — ${d.type}` : ''}`}</option>
+                ))}
               </select>
             </div>
           </div>

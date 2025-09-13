@@ -183,7 +183,7 @@ const QuestionsList: React.FC = () => {
               <input
                 type="text"
                 placeholder="Search questions, subjects, chapters, or topics..."
-                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500"
+                className="w-full px-3 sm:px-4 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500"
                 onChange={(e) => debouncedSetSearchTerm(e.target.value)}
               />
             </div>
@@ -193,7 +193,7 @@ const QuestionsList: React.FC = () => {
               <select
                 value={selectedSubject}
                 onChange={(e) => setSelectedSubject(e.target.value)}
-                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500"
+                className="w-full px-3 sm:px-4 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500"
               >
                 <option value="">All Subjects</option>
                 {uniqueSubjects.map(subject => (
@@ -207,7 +207,7 @@ const QuestionsList: React.FC = () => {
               <select
                 value={selectedChapter}
                 onChange={(e) => setSelectedChapter(e.target.value)}
-                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500"
+                className="w-full px-3 sm:px-4 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500"
               >
                 <option value="">All Chapters</option>
                 {uniqueChapters.map(ch => (
@@ -221,7 +221,7 @@ const QuestionsList: React.FC = () => {
               <select
                 value={selectedDifficultyKey}
                 onChange={(e) => setSelectedDifficultyKey(e.target.value)}
-                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500"
+                className="w-full px-3 sm:px-4 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500"
               >
                 <option value="">All Difficulties</option>
                 {difficultyOptions.map(d => (
@@ -285,7 +285,7 @@ const QuestionsList: React.FC = () => {
                     >
                       <div className="flex flex-col sm:flex-row sm:justify-between sm:items-start gap-3">
                         <div className="flex-1">
-                          <div className="flex items-center space-x-3 mb-2">
+                          <div className="flex flex-wrap items-center gap-2 mb-1">
                             <span className="text-sm font-medium text-gray-600">#{question.question_id}</span>
                             <span className="text-sm text-gray-500">{subjectName}</span>
                             {question.chapter_name && (
@@ -296,6 +296,18 @@ const QuestionsList: React.FC = () => {
                             )}
                             <span className="text-sm text-gray-400">•</span>
                             <span className="text-sm text-gray-500">{topicName}</span>
+                            {/* Badges inline on larger screens */}
+                            <span className={`hidden sm:inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${difficultyInfo.color}`}>
+                              {difficultyInfo.text}
+                            </span>
+                            {difficultyType && (
+                              <span className="hidden sm:inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-800">
+                                {difficultyType}
+                              </span>
+                            )}
+                          </div>
+                          {/* Badges moved to second row on mobile for better wrap */}
+                          <div className="flex sm:hidden items-center gap-2 mb-2">
                             <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${difficultyInfo.color}`}>
                               {difficultyInfo.text}
                             </span>

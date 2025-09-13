@@ -57,7 +57,8 @@ export interface GroupedQuestion {
 
 // Difficulties
 export interface Difficulty {
-  difficulty_id?: string; // encoded id from backend
+  difficulty_id?: number | string; // may be encoded string or raw number
+  difficulty_id_raw?: number; // preferred raw numeric id if provided
   difficulty_level: number;
   difficulty_type: string;
 }

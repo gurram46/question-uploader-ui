@@ -138,14 +138,22 @@ export default apiClient;
 export const difficultyApi = {
   getDifficulties: async (): Promise<Difficulty[]> => {
     try {
-      const response: AxiosResponse<Difficulty[]> = await apiClient.get('/getdifficulties');
+      const response: AxiosResponse<any[]> = await apiClient.get('/getdifficulties');
       const raw = response.data || [];
-      // Normalize to ensure level is a number and type is string
-      return raw.map((d: any) => ({
-        difficulty_id: d?.difficulty_id ? String(d.difficulty_id) : undefined,
-        difficulty_level: Number(d?.difficulty_level),
-        difficulty_type: String(d?.difficulty_type ?? ''),
-      }));
+      // Normalize: support both encoded and raw ids
+      return raw.map((d: any): Difficulty => {
+        const level = Number(d?.difficulty_level);
+        const type = String(d?.difficulty_type ?? '');
+        const rawIdCandidate = d?.difficulty_id_raw ?? (typeof d?.difficulty_id === 'number' ? d.difficulty_id : undefined);
+        const difficulty_id_raw = Number.isFinite(Number(rawIdCandidate)) ? Number(rawIdCandidate) : undefined;
+        const difficulty_id = typeof d?.difficulty_id === 'string' || typeof d?.difficulty_id === 'number' ? d.difficulty_id : undefined;
+        return {
+          difficulty_level: level,
+          difficulty_type: type,
+          difficulty_id,
+          difficulty_id_raw,
+        };
+      });
     } catch (error) {
       if (axios.isAxiosError(error) && error.response?.data?.message) {
         throw new Error(error.response.data.message);

@@ -116,6 +116,7 @@ const QuestionUploadForm: React.FC = () => {
 
       setForm({
         subjectName: form.subjectName,
+        chapterName: form.chapterName,
         topicName: form.topicName,
         difficultyLevel: form.difficultyLevel,
         questionText: '',
@@ -159,6 +160,21 @@ const QuestionUploadForm: React.FC = () => {
               disabled={isLoading}
             />
             {getFieldError('subjectName') && (<p className="mt-1 text-sm text-red-600">{getFieldError('subjectName')}</p>)}
+          </div>
+
+          {/* Chapter Name */}
+          <div>
+            <label htmlFor="chapterName" className="block text-sm font-medium text-gray-700 mb-2">Chapter Name *</label>
+            <input
+              type="text"
+              id="chapterName"
+              value={form.chapterName}
+              onChange={(e) => handleInputChange('chapterName', e.target.value)}
+              className={`w-full px-3 py-2 border rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-primary-500 ${getFieldError('chapterName') ? 'border-red-500' : 'border-gray-300'}`}
+              placeholder="Enter chapter name (letters and numbers)"
+              disabled={isLoading}
+            />
+            {getFieldError('chapterName') && (<p className="mt-1 text-sm text-red-600">{getFieldError('chapterName')}</p>)}
           </div>
 
           {/* Topic Name */}

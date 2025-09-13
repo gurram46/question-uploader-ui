@@ -70,6 +70,7 @@ export const groupQuestionsByQuestionId = (questionRows: QuestionRow[]): Grouped
       questionMap.set(row.question_id, {
         question_id: row.question_id,
         subject_name: row.subject_name,
+        chapter_name: (row as any).chapter_name ?? (row as any).chapterName,
         topic_name: row.topic_name,
         difficulty_level: difficultyLevel,
         difficulty_type: difficultyType || undefined,
@@ -240,6 +241,7 @@ export const filterQuestions = (
   questions: GroupedQuestion[],
   searchTerm: string,
   subjectFilter: string,
+  chapterFilter: string | undefined | null,
   difficultyFilter: number | null
 ): GroupedQuestion[] => {
   return questions.filter(question => {
@@ -251,11 +253,13 @@ export const filterQuestions = (
     
     // Subject filter
     const matchesSubject = !subjectFilter || question.subject_name === subjectFilter;
+    // Chapter filter
+    const matchesChapter = !chapterFilter || (question.chapter_name || '') === chapterFilter;
     
     // Difficulty filter
     const matchesDifficulty = difficultyFilter === null || question.difficulty_level === difficultyFilter;
     
-    return matchesSearch && matchesSubject && matchesDifficulty;
+    return matchesSearch && matchesSubject && matchesChapter && matchesDifficulty;
   });
 };
 
@@ -263,6 +267,13 @@ export const filterQuestions = (
 export const getUniqueSubjects = (questions: GroupedQuestion[]): string[] => {
   const subjects = questions.map(q => q.subject_name).filter(Boolean);
   return Array.from(new Set(subjects)).sort();
+};
+
+// Get unique chapters, optionally narrowed by subject
+export const getUniqueChapters = (questions: GroupedQuestion[], subject?: string): string[] => {
+  const filtered = subject ? questions.filter(q => q.subject_name === subject) : questions;
+  const chapters = filtered.map(q => q.chapter_name || '').filter(Boolean);
+  return Array.from(new Set(chapters)).sort();
 };
 
 export default {
@@ -273,5 +284,6 @@ export default {
   generateId,
   debounce,
   filterQuestions,
-  getUniqueSubjects
+  getUniqueSubjects,
+  getUniqueChapters
 };

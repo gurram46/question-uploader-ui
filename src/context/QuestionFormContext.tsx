@@ -14,6 +14,7 @@ const QuestionFormContext = createContext<QuestionFormContextValue | undefined>(
 
 const DEFAULT_FORM: QuestionForm = {
   subjectName: '',
+  chapterName: '',
   topicName: '',
   difficultyLevel: 1,
   questionText: '',

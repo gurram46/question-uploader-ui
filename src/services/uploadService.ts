@@ -72,6 +72,7 @@ export const createQuestionPayload = async (form: QuestionForm): Promise<Questio
   
   const payload: QuestionPayload = {
     subjectName: sanitizeString(form.subjectName),
+    chapterName: form.chapterName ? sanitizeString(form.chapterName) : undefined,
     topicName: sanitizeString(form.topicName),
     difficultyLevel: form.difficultyLevel,
     questionText: sanitizeString(form.questionText),
@@ -107,7 +108,7 @@ export const createQuestionFormData = (form: QuestionForm, opts?: { difficultyId
   const formData = new FormData();
   
   // Match exact field order expected by backend:
-  // questionImage, subjectName, topicName, difficultyLevel, questionText,
+  // questionImage, subjectName, chapterName, topicName, difficultyLevel, questionText,
   // option1Correct, option1, option2Correct, option2, option3Correct, option3,
   // option4Correct, option4, explaination, option1Image, option2Image,
   // option3Image, option4Image, explainationImage
@@ -120,6 +121,7 @@ export const createQuestionFormData = (form: QuestionForm, opts?: { difficultyId
   
   // Text fields
   formData.append('subjectName', sanitizeString(form.subjectName));
+  formData.append('chapterName', sanitizeString(form.chapterName));
   formData.append('topicName', sanitizeString(form.topicName));
   // Ensure difficultyLevel is a clean integer string (1..10)
   const difficulty = Math.max(1, Math.min(10, Number(form.difficultyLevel) || 1));
@@ -192,6 +194,7 @@ export const createQuestionPayloadWithoutImages = (form: QuestionForm): Question
   
   const payload: QuestionPayload = {
     subjectName: sanitizeString(form.subjectName),
+    chapterName: form.chapterName ? sanitizeString(form.chapterName) : undefined,
     topicName: sanitizeString(form.topicName),
     difficultyLevel: form.difficultyLevel,
     questionText: sanitizeString(form.questionText),

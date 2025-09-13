@@ -78,6 +78,22 @@ export const validateQuestionText = (questionText: string): string[] => {
   return errors;
 };
 
+// Validate chapter name (letters and numbers)
+export const validateChapterName = (chapterName: string): string[] => {
+  const errors: string[] = [];
+  const trimmed = chapterName.trim();
+  if (!trimmed) {
+    errors.push('Chapter name is required');
+  } else if (!/^[a-zA-Z0-9\s]+$/.test(trimmed)) {
+    errors.push('Chapter name can only contain letters, numbers, and spaces');
+  } else if (trimmed.length < 2) {
+    errors.push('Chapter name must be at least 2 characters long');
+  } else if (trimmed.length > 50) {
+    errors.push('Chapter name must be less than 50 characters');
+  }
+  return errors;
+};
+
 // Validate options
 export const validateOptions = (options: QuestionForm['options']): string[] => {
   const errors: string[] = [];
@@ -140,6 +156,10 @@ export const validateQuestionForm = (form: QuestionForm): ValidationError[] => {
   // Validate topic name
   const topicErrors = validateTopicName(form.topicName);
   topicErrors.forEach(error => allErrors.push({ field: 'topicName', message: error }));
+  
+  // Validate chapter name
+  const chapterErrors = validateChapterName(form.chapterName);
+  chapterErrors.forEach(error => allErrors.push({ field: 'chapterName', message: error }));
   
   // Validate difficulty level
   const difficultyErrors = validateDifficultyLevel(form.difficultyLevel);

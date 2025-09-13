@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { GroupedQuestion } from '../types';
 import { questionApi, difficultyApi } from '../services/api';
-import { groupQuestionsByQuestionId, formatDate, getDifficultyInfo, debounce, filterQuestions, getUniqueSubjects } from '../utils/dataProcessing';
+import { groupQuestionsByQuestionId, formatDate, getDifficultyInfo, debounce, filterQuestions, getUniqueSubjects, getUniqueChapters } from '../utils/dataProcessing';
 import { useToast } from '../hooks/useToast';
 
 const QuestionsList: React.FC = () => {
@@ -10,6 +10,7 @@ const QuestionsList: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedSubject, setSelectedSubject] = useState('');
+  const [selectedChapter, setSelectedChapter] = useState('');
   // Difficulty filter sourced from backend (level + type)
   const [difficultyOptions, setDifficultyOptions] = useState<Array<{ key: string; level: number; type: string }>>([]);
   const [selectedDifficultyKey, setSelectedDifficultyKey] = useState<string>('');
@@ -94,8 +95,8 @@ const QuestionsList: React.FC = () => {
 
   // Filter questions based on search criteria
   const filteredQuestions = useMemo(() => {
-    // Use base filter for search + subject
-    const base = filterQuestions(questions, searchTerm, selectedSubject, null);
+    // Use base filter for search + subject + chapter
+    const base = filterQuestions(questions, searchTerm, selectedSubject, selectedChapter, null);
     if (!selectedDifficultyKey) return base;
     const [lvlStr, typeRaw] = selectedDifficultyKey.split('::');
     const lvl = Number(lvlStr);
@@ -107,12 +108,11 @@ const QuestionsList: React.FC = () => {
       // If filter has type, require exact match; otherwise match by level only
       return type ? qt === type : true;
     });
-  }, [questions, searchTerm, selectedSubject, selectedDifficultyKey]);
+  }, [questions, searchTerm, selectedSubject, selectedChapter, selectedDifficultyKey]);
 
   // Get unique subjects for filter dropdown
-  const uniqueSubjects = useMemo(() => {
-    return getUniqueSubjects(questions);
-  }, [questions]);
+  const uniqueSubjects = useMemo(() => getUniqueSubjects(questions), [questions]);
+  const uniqueChapters = useMemo(() => getUniqueChapters(questions, selectedSubject), [questions, selectedSubject]);
 
   // Toggle question expansion
   const toggleExpansion = useCallback((questionId: string) => {
@@ -131,6 +131,7 @@ const QuestionsList: React.FC = () => {
   const resetFilters = useCallback(() => {
     setSearchTerm('');
     setSelectedSubject('');
+    setSelectedChapter('');
     setSelectedDifficultyKey('');
   }, []);
 
@@ -176,9 +177,9 @@ const QuestionsList: React.FC = () => {
           </div>
 
           {/* Search and Filters */}
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-3 sm:gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-6 gap-3 sm:gap-4">
             {/* Search Input */}
-            <div className="md:col-span-2">
+            <div className="md:col-span-3">
               <input
                 type="text"
                 placeholder="Search questions, subjects, or topics..."
@@ -201,6 +202,20 @@ const QuestionsList: React.FC = () => {
               </select>
             </div>
 
+            {/* Chapter Filter */}
+            <div>
+              <select
+                value={selectedChapter}
+                onChange={(e) => setSelectedChapter(e.target.value)}
+                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500"
+              >
+                <option value="">All Chapters</option>
+                {uniqueChapters.map(ch => (
+                  <option key={ch} value={ch}>{ch}</option>
+                ))}
+              </select>
+            </div>
+
             {/* Difficulty Filter */}
             <div>
               <select
@@ -217,7 +232,7 @@ const QuestionsList: React.FC = () => {
           </div>
 
           {/* Reset Filters Button */}
-          {(searchTerm || selectedSubject || selectedDifficultyKey) && (
+          {(searchTerm || selectedSubject || selectedChapter || selectedDifficultyKey) && (
             <div className="mt-4">
               <button
                 onClick={resetFilters}
@@ -273,6 +288,12 @@ const QuestionsList: React.FC = () => {
                           <div className="flex items-center space-x-3 mb-2">
                             <span className="text-sm font-medium text-gray-600">#{question.question_id}</span>
                             <span className="text-sm text-gray-500">{subjectName}</span>
+                            {question.chapter_name && (
+                              <>
+                                <span className="text-sm text-gray-400">•</span>
+                                <span className="text-sm text-gray-500">{question.chapter_name}</span>
+                              </>
+                            )}
                             <span className="text-sm text-gray-400">•</span>
                             <span className="text-sm text-gray-500">{topicName}</span>
                             <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${difficultyInfo.color}`}>

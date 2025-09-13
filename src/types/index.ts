@@ -7,6 +7,7 @@ export interface Option {
 
 export interface Question {
   subjectName: string;
+  chapterName?: string;
   topicName: string;
   difficultyLevel: number;
   questionText: string;
@@ -20,6 +21,7 @@ export interface Question {
 export interface QuestionRow {
   question_id: string;
   subject_name: string;
+  chapter_name?: string;
   topic_name: string;
   difficulty_id?: number | string; // Backend returns numeric id on /getquestions
   difficulty_level?: number | string; // Backend might send as string
@@ -40,6 +42,7 @@ export interface QuestionRow {
 export interface GroupedQuestion {
   question_id: string;
   subject_name: string;
+  chapter_name?: string;
   topic_name: string;
   difficulty_level?: number;
   difficulty_type?: string;
@@ -73,6 +76,7 @@ export interface FormOption {
 
 export interface QuestionForm {
   subjectName: string;
+  chapterName: string;
   topicName: string;
   difficultyLevel: number;
   questionText: string;
@@ -106,6 +110,7 @@ export interface ValidationError {
 // Backend payload types - exact format expected by backend
 export interface QuestionPayload {
   subjectName: string;
+  chapterName?: string;
   topicName: string;
   difficultyLevel: number;
   questionText: string;

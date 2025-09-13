@@ -87,16 +87,25 @@ export const questionApi = {
   },
 
   getQuestions: async (): Promise<QuestionRow[]> => {
+    const tryEndpoint = async (path: string) => {
+      const resp: AxiosResponse<QuestionRow[]> = await apiClient.get(path);
+      return resp.data;
+    };
     try {
-      const response: AxiosResponse<QuestionRow[]> = await apiClient.get('/getquestions');
-      
-      // Log the raw response in development
-      if (process.env.NODE_ENV === 'development' && response.data.length > 0) {
-        console.log('Raw GET response sample:', response.data[0]);
-        console.log('Full response:', response.data);
+      // Prefer new endpoint if backend updated
+      let data: QuestionRow[] = [];
+      try {
+        data = await tryEndpoint('/getuploadedquestions');
+      } catch (e) {
+        // Fallback to legacy route
+        data = await tryEndpoint('/getquestions');
       }
-      
-      return response.data;
+
+      if (process.env.NODE_ENV === 'development' && data.length > 0) {
+        console.log('Raw GET response sample:', data[0]);
+        console.log('Full response:', data);
+      }
+      return data;
     } catch (error) {
       if (axios.isAxiosError(error) && error.response?.data?.message) {
         throw new Error(error.response.data.message);

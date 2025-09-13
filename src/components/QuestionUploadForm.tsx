@@ -255,7 +255,7 @@ const QuestionUploadForm: React.FC = () => {
                       />
                     </div>
 
-                    <div className="sm:col-span-3">
+                    <div className="sm:col-span-3 h-10 flex items-center">
                       <label className="w-full sm:w-auto justify-center sm:justify-start cursor-pointer inline-flex items-center px-3 py-2 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 focus-within:outline-none focus-within:ring-2 focus-within:ring-offset-2 focus-within:ring-primary-500">
                         <svg className="mr-2 h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>
                         {option.option_image ? 'Change' : 'Add Image'}
@@ -272,8 +272,8 @@ const QuestionUploadForm: React.FC = () => {
                       )}
                     </div>
 
-                    <div className="sm:col-span-1">
-                      <label className="flex items-center">
+                    <div className="sm:col-span-1 h-10 flex items-center justify-end sm:justify-end self-center">
+                      <label className="inline-flex items-center">
                         <input
                           type="checkbox"
                           checked={option.is_correct}
@@ -281,7 +281,7 @@ const QuestionUploadForm: React.FC = () => {
                           className="h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300 rounded"
                           disabled={isLoading}
                         />
-                        <span className="ml-2 text-sm text-gray-700 whitespace-nowrap">Correct</span>
+                        <span className="ml-2 text-sm text-gray-700 whitespace-nowrap select-none">Correct</span>
                       </label>
                     </div>
                   </div>

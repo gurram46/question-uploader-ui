@@ -15,18 +15,18 @@ function App() {
   return (
     <div className="min-h-screen bg-gray-100">
       {/* Navigation */}
-      <nav className="bg-white shadow-sm border-b border-gray-200">
+      <nav className="bg-white shadow-sm border-b border-gray-200 sticky top-0 z-20">
         <div className="max-w-6xl mx-auto px-4">
-          <div className="flex justify-between items-center h-16">
-            <div className="flex items-center">
-              <h1 className="text-xl font-bold text-gray-900">Question Uploader</h1>
-              <span className="ml-2 text-sm text-gray-500">Internal Database</span>
+          <div className="flex flex-col gap-2 sm:flex-row sm:justify-between sm:items-center sm:h-16 py-2">
+            <div className="flex items-baseline justify-between">
+              <h1 className="text-lg sm:text-xl font-bold text-gray-900 leading-tight">Question Uploader</h1>
+              <span className="ml-2 hidden sm:inline text-sm text-gray-500">Internal Database</span>
             </div>
-            
-            <div className="flex space-x-1">
+
+            <div className="flex space-x-1 overflow-x-auto no-scrollbar py-1">
               <button
                 onClick={() => setCurrentView('upload')}
-                className={`px-4 py-2 text-sm font-medium rounded-md transition-colors ${
+                className={`px-3 py-1.5 sm:px-4 sm:py-2 text-sm font-medium rounded-md transition-colors ${
                   currentView === 'upload'
                     ? 'bg-primary-100 text-primary-700 border border-primary-200'
                     : 'text-gray-600 hover:text-gray-900 hover:bg-gray-100'
@@ -36,7 +36,7 @@ function App() {
               </button>
               <button
                 onClick={() => setCurrentView('list')}
-                className={`px-4 py-2 text-sm font-medium rounded-md transition-colors ${
+                className={`px-3 py-1.5 sm:px-4 sm:py-2 text-sm font-medium rounded-md transition-colors ${
                   currentView === 'list'
                     ? 'bg-primary-100 text-primary-700 border border-primary-200'
                     : 'text-gray-600 hover:text-gray-900 hover:bg-gray-100'

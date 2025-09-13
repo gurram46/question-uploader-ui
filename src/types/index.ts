@@ -21,7 +21,9 @@ export interface QuestionRow {
   question_id: string;
   subject_name: string;
   topic_name: string;
+  difficulty_id?: number | string; // Backend returns numeric id on /getquestions
   difficulty_level?: number | string; // Backend might send as string
+  difficulty_type?: string; // Backend includes type on /getquestions
   question_text: string;
   question_image?: string;
   option_id?: number;

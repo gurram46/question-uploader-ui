@@ -1,51 +1,336 @@
-codex
-Here’s what the backend expects from the frontend.
+this is a simple GET in Postman 
+[
+    {
+        "question_id": "P9gdR2MA",
+        "question_text": "dfwsdfgbgfdewsdefv",
+        "question_image": null,
+        "option_text": "q",
+        "is_correct": false,
+        "option_image": null,
+        "explanation_text": "wdsfvbgdewef",
+        "explanation_image": null,
+        "subject_name": "biology",
+        "topic_name": "no not nice man",
+        "difficulty_id": 9,
+        "difficulty_level": 3,
+        "difficulty_type": "critical thinking"
+    },
+    {
+        "question_id": "P9gdR2MA",
+        "question_text": "dfwsdfgbgfdewsdefv",
+        "question_image": null,
+        "option_text": "w",
+        "is_correct": false,
+        "option_image": null,
+        "explanation_text": "wdsfvbgdewef",
+        "explanation_image": null,
+        "subject_name": "biology",
+        "topic_name": "no not nice man",
+        "difficulty_id": 9,
+        "difficulty_level": 3,
+        "difficulty_type": "critical thinking"
+    },
+    {
+        "question_id": "P9gdR2MA",
+        "question_text": "dfwsdfgbgfdewsdefv",
+        "question_image": null,
+        "option_text": "e",
+        "is_correct": false,
+        "option_image": null,
+        "explanation_text": "wdsfvbgdewef",
+        "explanation_image": null,
+        "subject_name": "biology",
+        "topic_name": "no not nice man",
+        "difficulty_id": 9,
+        "difficulty_level": 3,
+        "difficulty_type": "critical thinking"
+    },
+    {
+        "question_id": "P9gdR2MA",
+        "question_text": "dfwsdfgbgfdewsdefv",
+        "question_image": null,
+        "option_text": "r",
+        "is_correct": true,
+        "option_image": null,
+        "explanation_text": "wdsfvbgdewef",
+        "explanation_image": null,
+        "subject_name": "biology",
+        "topic_name": "no not nice man",
+        "difficulty_id": 9,
+        "difficulty_level": 3,
+        "difficulty_type": "critical thinking"
+    },
+    {
+        "question_id": "OXWAzdM2",
+        "question_text": "i am just a test",
+        "question_image": null,
+        "option_text": "1",
+        "is_correct": false,
+        "option_image": null,
+        "explanation_text": "see i am just a test",
+        "explanation_image": null,
+        "subject_name": "biology",
+        "topic_name": "this is just a test",
+        "difficulty_id": 9,
+        "difficulty_level": 3,
+        "difficulty_type": "critical thinking"
+    },
+    {
+        "question_id": "OXWAzdM2",
+        "question_text": "i am just a test",
+        "question_image": null,
+        "option_text": "2",
+        "is_correct": false,
+        "option_image": null,
+        "explanation_text": "see i am just a test",
+        "explanation_image": null,
+        "subject_name": "biology",
+        "topic_name": "this is just a test",
+        "difficulty_id": 9,
+        "difficulty_level": 3,
+        "difficulty_type": "critical thinking"
+    },
+    {
+        "question_id": "OXWAzdM2",
+        "question_text": "i am just a test",
+        "question_image": null,
+        "option_text": "3",
+        "is_correct": false,
+        "option_image": null,
+        "explanation_text": "see i am just a test",
+        "explanation_image": null,
+        "subject_name": "biology",
+        "topic_name": "this is just a test",
+        "difficulty_id": 9,
+        "difficulty_level": 3,
+        "difficulty_type": "critical thinking"
+    },
+    {
+        "question_id": "OXWAzdM2",
+        "question_text": "i am just a test",
+        "question_image": null,
+        "option_text": "4 this is the right option",
+        "is_correct": true,
+        "option_image": "1757685808169875",
+        "explanation_text": "see i am just a test",
+        "explanation_image": null,
+        "subject_name": "biology",
+        "topic_name": "this is just a test",
+        "difficulty_id": 9,
+        "difficulty_level": 3,
+        "difficulty_type": "critical thinking"
+    },
+    {
+        "question_id": "dyMG23WD",
+        "question_text": "this is just a test",
+        "question_image": null,
+        "option_text": "1",
+        "is_correct": false,
+        "option_image": null,
+        "explanation_text": "this is just a test",
+        "explanation_image": null,
+        "subject_name": "biology",
+        "topic_name": "this is just a test",
+        "difficulty_id": 9,
+        "difficulty_level": 3,
+        "difficulty_type": "critical thinking"
+    },
+    {
+        "question_id": "dyMG23WD",
+        "question_text": "this is just a test",
+        "question_image": null,
+        "option_text": "2",
+        "is_correct": false,
+        "option_image": null,
+        "explanation_text": "this is just a test",
+        "explanation_image": null,
+        "subject_name": "biology",
+        "topic_name": "this is just a test",
+        "difficulty_id": 9,
+        "difficulty_level": 3,
+        "difficulty_type": "critical thinking"
+    },
+    {
+        "question_id": "dyMG23WD",
+        "question_text": "this is just a test",
+        "question_image": null,
+        "option_text": "3",
+        "is_correct": false,
+        "option_image": null,
+        "explanation_text": "this is just a test",
+        "explanation_image": null,
+        "subject_name": "biology",
+        "topic_name": "this is just a test",
+        "difficulty_id": 9,
+        "difficulty_level": 3,
+        "difficulty_type": "critical thinking"
+    },
+    {
+        "question_id": "dyMG23WD",
+        "question_text": "this is just a test",
+        "question_image": null,
+        "option_text": "4",
+        "is_correct": true,
+        "option_image": null,
+        "explanation_text": "this is just a test",
+        "explanation_image": null,
+        "subject_name": "biology",
+        "topic_name": "this is just a test",
+        "difficulty_id": 9,
+        "difficulty_level": 3,
+        "difficulty_type": "critical thinking"
+    },
+    {
+        "question_id": "OBM8y41p",
+        "question_text": "qwertghjkl,mnbvcxz",
+        "question_image": null,
+        "option_text": "1",
+        "is_correct": false,
+        "option_image": null,
+        "explanation_text": "asdfvcbnm nbvcxz",
+        "explanation_image": null,
+        "subject_name": "biology",
+        "topic_name": "diversity in the living world",
+        "difficulty_id": 9,
+        "difficulty_level": 3,
+        "difficulty_type": "critical thinking"
+    },
+    {
+        "question_id": "OBM8y41p",
+        "question_text": "qwertghjkl,mnbvcxz",
+        "question_image": null,
+        "option_text": "2",
+        "is_correct": false,
+        "option_image": null,
+        "explanation_text": "asdfvcbnm nbvcxz",
+        "explanation_image": null,
+        "subject_name": "biology",
+        "topic_name": "diversity in the living world",
+        "difficulty_id": 9,
+        "difficulty_level": 3,
+        "difficulty_type": "critical thinking"
+    },
+    {
+        "question_id": "OBM8y41p",
+        "question_text": "qwertghjkl,mnbvcxz",
+        "question_image": null,
+        "option_text": "3",
+        "is_correct": false,
+        "option_image": null,
+        "explanation_text": "asdfvcbnm nbvcxz",
+        "explanation_image": null,
+        "subject_name": "biology",
+        "topic_name": "diversity in the living world",
+        "difficulty_id": 9,
+        "difficulty_level": 3,
+        "difficulty_type": "critical thinking"
+    },
+    {
+        "question_id": "OBM8y41p",
+        "question_text": "qwertghjkl,mnbvcxz",
+        "question_image": null,
+        "option_text": "4",
+        "is_correct": true,
+        "option_image": null,
+        "explanation_text": "asdfvcbnm nbvcxz",
+        "explanation_image": null,
+        "subject_name": "biology",
+        "topic_name": "diversity in the living world",
+        "difficulty_id": 9,
+        "difficulty_level": 3,
+        "difficulty_type": "critical thinking"
+    },
+    {
+        "question_id": "5GMZkK1D",
+        "question_text": "sferqwd3",
+        "question_image": null,
+        "option_text": "1",
+        "is_correct": true,
+        "option_image": null,
+        "explanation_text": "esfewgf",
+        "explanation_image": null,
+        "subject_name": "biology",
+        "topic_name": "diversity in the living world",
+        "difficulty_id": 9,
+        "difficulty_level": 3,
+        "difficulty_type": "critical thinking"
+    },
+    {
+        "question_id": "5GMZkK1D",
+        "question_text": "sferqwd3",
+        "question_image": null,
+        "option_text": "2",
+        "is_correct": false,
+        "option_image": null,
+        "explanation_text": "esfewgf",
+        "explanation_image": null,
+        "subject_name": "biology",
+        "topic_name": "diversity in the living world",
+        "difficulty_id": 9,
+        "difficulty_level": 3,
+        "difficulty_type": "critical thinking"
+    },
+    {
+        "question_id": "5GMZkK1D",
+        "question_text": "sferqwd3",
+        "question_image": null,
+        "option_text": "3",
+        "is_correct": false,
+        "option_image": null,
+        "explanation_text": "esfewgf",
+        "explanation_image": null,
+        "subject_name": "biology",
+        "topic_name": "diversity in the living world",
+        "difficulty_id": 9,
+        "difficulty_level": 3,
+        "difficulty_type": "critical thinking"
+    },
+    {
+        "question_id": "5GMZkK1D",
+        "question_text": "sferqwd3",
+        "question_image": null,
+        "option_text": "4",
+        "is_correct": false,
+        "option_image": null,
+        "explanation_text": "esfewgf",
+        "explanation_image": null,
+        "subject_name": "biology",
+        "topic_name": "diversity in the living world",
+        "difficulty_id": 9,
+        "difficulty_level": 3,
+        "difficulty_type": "critical thinking"
+    },
+    {
+        "question_id": "dXWv441a",
+        "question_text": "test",
+        "question_image": null,
+        "option_text": "T",
+        "is_correct": true,
+        "option_image": null,
+        "explanation_text": null,
+        "explanation_image": null,
+        "subject_name": "biology",
+        "topic_name": "physics",
+        "difficulty_id": 9,
+        "difficulty_level": 3,
+        "difficulty_type": "critical thinking"
+    },
+    {
+        "question_id": "dXWv441a",
+        "question_text": "test",
+        "question_image": null,
+        "option_text": "A",
+        "is_correct": false,
+        "option_image": null,
+        "explanation_text": null,
+        "explanation_image": null,
+        "subject_name": "biology",
+        "topic_name": "physics",
+        "difficulty_id": 9,
+        "difficulty_level": 3,
+        "difficulty_type": "critical thinking"
+    }
+]
 
-Endpoints
-
-- POST /uploadquestion (multipart/form-data)
-    - Text fields (required): subjectName, topicName, questionText, difficultyId (number > 0).
-    - Options: option1..option4 (texts, optional), option1Correct..option4Correct (booleans or “true”/“false”).
-    - Explanation: explanation (optional).
-    - Files (optional, 0–1 each): questionImage, option1Image, option2Image, option3Image, option4Image, explanationImage.
-    - Constraint: at least one of option1 or option1Image must be present.
-    - Important: send difficultyId as the numeric DB id (not hashed, not a label).
-    - Important: send difficultyId as the numeric DB id (not hashed, not a label).
--
-GET /getquestions
-    - No input. Returns flattened rows. Fields include:
-    - `question_id` hashed string; `difficulty_id` numeric; `difficulty_level` number; `difficulty_type` string.
--
-Frontend should group rows by question_id to assemble questions with options.
--
-DELETE /deletequestion (application/json)
-    - Body: { "questionId": "<hashed question_id from GET>" }.
--
-GET /getdifficulties
-    - No input. Returns array with difficulty_id hashed, difficulty_level number (1–3), difficulty_type string.
--
-POST /createdifficulty (application/json)
-    - Body: { "difficultyLevel": number (1|2|3), "difficultyType": string }.
-
-Notes
-
-- CORS is enabled; no auth required.
-- For /uploadquestion, the backend uses difficultyId (numeric) to link to difficulties. The difficulty_id in /getquestions is numeric; the one in /
-getdifficulties is hashed. Use the numeric id when posting a question.
-
-
-backend guy messaged me this language is telugu+english ok 
-Nenu api end point icha gaa
-Difficulties display cheyadaniki
-
-Api lo ochevi difficulty_id, difficulty_level, difficulty_type
-
-Oka dropdown with all the values coming through api
-
-Level 1 - facts 
-Ala
-
-
-this is backend Endpoints
-POST : https://docquest-questions-backend.onrender.com/uploadquestion
-GET: https://docquest-questions-backend.onrender.com/getquestions
+	question_id	question_text	question_image	option_text	is_correct	option_image	explanation_text	explanation_image	subject_name	topic_name	difficulty_id	difficulty_level	difficulty_type
+0	P9gdR2MA	dfwsdfgbgfdewsdefv	null	q	false	null	wdsfvbgdewef	null	biology	no not nice man	9	3	critical thinking

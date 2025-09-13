@@ -1,8 +1,8 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import { QuestionForm, FormOption } from '../types';
 import { validateQuestionForm } from '../utils/validation';
 import { createQuestionFormData } from '../services/uploadService';
-import { questionApi, difficultyApi } from '../services/api';
+import { questionApi } from '../services/api';
 import { useToast } from '../hooks/useToast';
 import { useQuestionForm } from '../context/QuestionFormContext';
 
@@ -10,50 +10,13 @@ const QuestionUploadForm: React.FC = () => {
   const { showSuccess, showError } = useToast();
   const { form, setForm, validationErrors, setValidationErrors, isLoading, setIsLoading } = useQuestionForm();
 
-  // Difficulties state (simplified UI)
-  const [isLoadingDifficulties, setIsLoadingDifficulties] = useState(false);
+  // Difficulty inputs (frontend-only flow)
   const [selectedLevel, setSelectedLevel] = useState<number>(1);
-  const [newDifficultyType, setNewDifficultyType] = useState<string>('');
-  const [levelToNumericId, setLevelToNumericId] = useState<Map<number, number | string>>(new Map());
-  const [isCreatingDifficulty, setIsCreatingDifficulty] = useState(false);
+  // Difficulty options sourced from existing questions (ensures numeric IDs)
+  const [difficultyOptions, setDifficultyOptions] = useState<Array<{ id: number; level: number; type: string }>>([]);
+  const [selectedDifficultyId, setSelectedDifficultyId] = useState<number | undefined>(undefined);
+  const [difficultyTypeInput, setDifficultyTypeInput] = useState<string>('');
 
-  // Derive numeric ids from existing questions only (no hashed id support here)
-  useEffect(() => {
-    const fetchAll = async () => {
-      setIsLoadingDifficulties(true);
-      try {
-        const rows = await questionApi.getQuestions();
-        const byLevel: Map<number, number | string> = new Map();
-        rows.forEach((r: any) => {
-          const lvl = Number(r?.difficulty_level ?? 0);
-          const id = (r as any)?.difficulty_id;
-          if (Number.isFinite(lvl) && lvl >= 1 && id !== undefined && id !== null) {
-            if (!byLevel.has(lvl)) byLevel.set(lvl, id);
-          }
-        });
-        setLevelToNumericId(byLevel);
-        const initialLevel = Number(form.difficultyLevel) || 1;
-        const normalized = [1, 2, 3].includes(initialLevel) ? initialLevel : 1;
-        setSelectedLevel(normalized);
-      } catch (_) {
-        // Silent; UI still usable with fallback
-      } finally {
-        setIsLoadingDifficulties(false);
-      }
-    };
-    fetchAll();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [form.difficultyLevel]);
-
-  // Resolve numeric id (level-only)
-  const selectedNumericDifficultyId = useMemo(() => {
-    const id = levelToNumericId.get(selectedLevel);
-    if (id === undefined || id === null) return undefined;
-    const n = Number(id);
-    return Number.isFinite(n) ? n : undefined;
-  }, [levelToNumericId, selectedLevel]);
-
-  // Handlers
   const handleInputChange = useCallback((field: keyof QuestionForm, value: string | number) => {
     setForm(prev => ({
       ...prev,
@@ -82,45 +45,43 @@ const QuestionUploadForm: React.FC = () => {
     return error?.message;
   }, [validationErrors]);
 
-  // Create a new difficulty (level + type)
-  const handleCreateDifficulty = useCallback(async () => {
-    const type = newDifficultyType.trim();
-    const lvl = Number(selectedLevel);
-    if (!type) {
-      showError('Please enter a difficulty type (e.g., facts, statements).');
-      return;
-    }
-    if (![1,2,3].includes(lvl)) {
-      showError('Please select a valid level (1, 2, or 3).');
-      return;
-    }
-    try {
-      setIsCreatingDifficulty(true);
-      await difficultyApi.createDifficulty(lvl, type);
-      setNewDifficultyType('');
-      showSuccess(`Difficulty added: Level ${lvl} - ${type}`);
-      // Refetch mapping from questions (new difficulty may not appear until used by some question)
+  // Load difficulty options from /getquestions so we have numeric IDs
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
       try {
         const rows = await questionApi.getQuestions();
-        const byLevel: Map<number, number | string> = new Map(levelToNumericId);
+        const uniq = new Map<number, { id: number; level: number; type: string }>();
         rows.forEach((r: any) => {
-          const l = Number(r?.difficulty_level ?? 0);
-          const id = (r as any)?.difficulty_id;
-          if (Number.isFinite(l) && l >= 1 && id !== undefined && id !== null && !byLevel.has(l)) {
-            byLevel.set(l, id);
+          const id = Number(r?.difficulty_id);
+          const lvl = Number(r?.difficulty_level);
+          const type = String(r?.difficulty_type || '');
+          if (Number.isFinite(id) && Number.isFinite(lvl) && type) {
+            if (!uniq.has(id)) uniq.set(id, { id, level: lvl, type });
           }
         });
-        setLevelToNumericId(byLevel);
-      } catch {}
-    } catch (e: any) {
-      const msg = e?.message || 'Failed to create difficulty';
-      showError(msg);
-    } finally {
-      setIsCreatingDifficulty(false);
-    }
-  }, [newDifficultyType, selectedLevel, showError, showSuccess, setIsLoading, levelToNumericId]);
+        const all = Array.from(uniq.values());
+        if (!cancelled) {
+          setDifficultyOptions(all);
+        }
+      } catch (err) {
+        // Silently ignore; submit will handle missing selection
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [selectedLevel]);
 
-  // Submit
+  // Resolve selectedDifficultyId from typed difficultyTypeInput + selectedLevel
+  useEffect(() => {
+    const normalized = difficultyTypeInput.trim().toLowerCase();
+    if (!normalized) {
+      setSelectedDifficultyId(undefined);
+      return;
+    }
+    const match = difficultyOptions.find(d => d.level === Number(selectedLevel) && d.type.toLowerCase() === normalized);
+    setSelectedDifficultyId(match?.id);
+  }, [difficultyTypeInput, selectedLevel, difficultyOptions]);
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
@@ -131,15 +92,17 @@ const QuestionUploadForm: React.FC = () => {
       return;
     }
 
+    // Ensure a difficulty (with numeric ID) is selected
+    const numericDifficultyId = Number(selectedDifficultyId);
+    if (!Number.isFinite(numericDifficultyId)) {
+      showError('Enter a difficulty type that already exists for the selected level.');
+      return;
+    }
+
     setIsLoading(true);
     try {
-      if (selectedNumericDifficultyId === undefined) {
-        showError('Difficulty not configured yet. Please select a difficulty that has a numeric id.');
-        setIsLoading(false);
-        return;
-      }
-
-      const formData = createQuestionFormData(form, { difficultyId: String(selectedNumericDifficultyId) });
+      // Upload with selected numeric difficultyId
+      const formData = createQuestionFormData(form, { difficultyId: String(numericDifficultyId) });
       await questionApi.uploadQuestion(formData);
 
       setForm({
@@ -158,6 +121,8 @@ const QuestionUploadForm: React.FC = () => {
         explanationImage: null,
       });
       setValidationErrors([]);
+      setDifficultyTypeInput('');
+      setSelectedDifficultyId(undefined);
       showSuccess('Question uploaded successfully!');
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Failed to upload question. Please try again.';
@@ -223,26 +188,27 @@ const QuestionUploadForm: React.FC = () => {
               ))}
             </select>
             {getFieldError('difficultyLevel') && (<p className="mt-1 text-sm text-red-600">{getFieldError('difficultyLevel')}</p>)}
-            {isLoadingDifficulties && (<p className="mt-1 text-sm text-gray-500">Loading difficulties...</p>)}
 
-            {/* Add Difficulty Type */}
-            <div className="mt-3 flex gap-2">
+            {/* Difficulty Type (free text with suggestions; must match existing to upload) */}
+            <div className="mt-3">
+              <label htmlFor="difficultyTypeInput" className="block text-sm font-medium text-gray-700 mb-2">Difficulty Type *</label>
               <input
+                id="difficultyTypeInput"
                 type="text"
-                placeholder="Add difficulty type (e.g., facts)"
-                value={newDifficultyType}
-                onChange={(e) => setNewDifficultyType(e.target.value)}
-                className="flex-1 px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
+                list="difficultyTypeSuggestions"
+                value={difficultyTypeInput}
+                onChange={(e) => setDifficultyTypeInput(e.target.value)}
+                placeholder="e.g., critical thinking, facts, recall"
+                className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
                 disabled={isLoading}
               />
-              <button
-                type="button"
-                onClick={handleCreateDifficulty}
-                className="px-4 py-2 rounded-md bg-primary-600 text-white hover:bg-primary-700 disabled:bg-gray-400"
-                disabled={isCreatingDifficulty || !newDifficultyType.trim()}
-              >
-                {isCreatingDifficulty ? 'Adding...' : 'Add'}
-              </button>
+              <datalist id="difficultyTypeSuggestions">
+                {difficultyOptions
+                  .filter(d => d.level === Number(selectedLevel))
+                  .map((d) => (
+                    <option key={`${d.level}-${d.type}`} value={d.type} />
+                  ))}
+              </datalist>
             </div>
           </div>
 
@@ -372,7 +338,7 @@ const QuestionUploadForm: React.FC = () => {
           <div className="pt-4">
             <button
               type="submit"
-              disabled={isLoading || selectedNumericDifficultyId === undefined}
+              disabled={isLoading}
               className={`w-full flex justify-center py-3 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white ${isLoading ? 'bg-gray-400 cursor-not-allowed' : 'bg-primary-600 hover:bg-primary-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500'}`}
             >
               {isLoading ? (

@@ -7,6 +7,13 @@ const resolveImageUrl = (value: any, kind: ImageKind = 'option'): string => {
   const raw = String(value).trim();
   if (!raw) return '';
   if (/^(https?:)?\/\//i.test(raw) || raw.startsWith('data:')) return raw;
+  
+  // Use Google Cloud Storage URL pattern: https://storage.googleapis.com/docquest/images/:id
+  // If the raw value looks like an ID (doesn't have a path or extension), use GCS format
+  if (!raw.includes('/') && !raw.includes('.')) {
+    return `https://storage.googleapis.com/docquest/images/${encodeURIComponent(raw)}`;
+  }
+  
   // Allow kind-specific base URLs; fall back to generic
   const baseFromEnv = (
     (kind === 'question' && process.env.REACT_APP_QUESTION_IMAGE_BASE_URL) ||

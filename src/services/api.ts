@@ -1,5 +1,5 @@
 import axios, { AxiosResponse } from 'axios';
-import { QuestionRow, ApiResponse, QuestionPayload, Difficulty } from '../types';
+import { QuestionRow, ApiResponse, QuestionPayload, Difficulty, QuestionType } from '../types';
 
 const API_BASE_URL = process.env.REACT_APP_API_BASE_URL || 'http://localhost:3001';
 
@@ -190,6 +190,21 @@ export const difficultyApi = {
         }
       }
       throw new Error('Failed to create difficulty');
+    }
+  },
+};
+
+// Question Type APIs
+export const questionTypeApi = {
+  getQuestionTypes: async (): Promise<QuestionType[]> => {
+    try {
+      const response: AxiosResponse<QuestionType[]> = await apiClient.get('/gettypes');
+      return response.data;
+    } catch (error) {
+      if (axios.isAxiosError(error) && error.response?.data?.message) {
+        throw new Error(error.response.data.message);
+      }
+      throw new Error('Failed to fetch question types');
     }
   },
 };

@@ -132,6 +132,17 @@ export const validateOptions = (options: QuestionForm['options']): string[] => {
   return errors;
 };
 
+// Validate question type
+export const validateQuestionType = (questionType: string): string[] => {
+  const errors: string[] = [];
+  
+  if (!questionType || !questionType.trim()) {
+    errors.push('Question type is required');
+  }
+  
+  return errors;
+};
+
 // Validate explanation (optional)
 export const validateExplanation = (explanation: string): string[] => {
   const errors: string[] = [];
@@ -172,6 +183,10 @@ export const validateQuestionForm = (form: QuestionForm): ValidationError[] => {
   // Validate options
   const optionErrors = validateOptions(form.options);
   optionErrors.forEach(error => allErrors.push({ field: 'options', message: error }));
+  
+  // Validate question type
+  const questionTypeErrors = validateQuestionType(form.questionType);
+  questionTypeErrors.forEach(error => allErrors.push({ field: 'questionType', message: error }));
   
   // Validate explanation
   const explanationErrors = validateExplanation(form.explanation);

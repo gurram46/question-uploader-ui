@@ -75,6 +75,7 @@ export const createQuestionPayload = async (form: QuestionForm): Promise<Questio
     chapterName: form.chapterName ? sanitizeString(form.chapterName) : undefined,
     topicName: sanitizeString(form.topicName),
     difficultyLevel: form.difficultyLevel,
+    questionType: sanitizeString(form.questionType),
     questionText: sanitizeString(form.questionText),
     questionImage: questionImageUrl || '',
     option1: options[0]?.option_text ? sanitizeString(options[0].option_text) : '',
@@ -123,6 +124,7 @@ export const createQuestionFormData = (form: QuestionForm, opts?: { difficultyId
   formData.append('subjectName', sanitizeString(form.subjectName));
   formData.append('chapterName', sanitizeString(form.chapterName));
   formData.append('topicName', sanitizeString(form.topicName));
+  formData.append('questionType', sanitizeString(form.questionType));
   // Ensure difficultyLevel is a clean integer string (1..10)
   const difficulty = Math.max(1, Math.min(10, Number(form.difficultyLevel) || 1));
   formData.append('difficultyLevel', difficulty.toString());
@@ -197,6 +199,7 @@ export const createQuestionPayloadWithoutImages = (form: QuestionForm): Question
     chapterName: form.chapterName ? sanitizeString(form.chapterName) : undefined,
     topicName: sanitizeString(form.topicName),
     difficultyLevel: form.difficultyLevel,
+    questionType: sanitizeString(form.questionType),
     questionText: sanitizeString(form.questionText),
     questionImage: '',
     option1: options[0]?.option_text ? sanitizeString(options[0].option_text) : '',

@@ -1,8 +1,8 @@
 import React, { useCallback, useEffect, useState } from 'react';
-import { QuestionForm, FormOption } from '../types';
+import { QuestionForm, FormOption, QuestionType } from '../types';
 import { validateQuestionForm } from '../utils/validation';
 import { createQuestionFormData } from '../services/uploadService';
-import { questionApi, difficultyApi } from '../services/api';
+import { questionApi, difficultyApi, questionTypeApi } from '../services/api';
 import { useToast } from '../hooks/useToast';
 import { useQuestionForm } from '../context/QuestionFormContext';
 
@@ -14,6 +14,9 @@ const QuestionUploadForm: React.FC = () => {
   const [selectedLevel, setSelectedLevel] = useState<number>(1);
   const [difficultyOptions, setDifficultyOptions] = useState<Array<{ idStr: string; idNum?: number; level: number; type: string }>>([]);
   const [selectedDifficultyIdStr, setSelectedDifficultyIdStr] = useState<string | undefined>(undefined);
+
+  // Question type selection sourced from backend
+  const [questionTypes, setQuestionTypes] = useState<QuestionType[]>([]);
 
   const handleInputChange = useCallback((field: keyof QuestionForm, value: string | number) => {
     setForm(prev => ({
@@ -90,6 +93,21 @@ const QuestionUploadForm: React.FC = () => {
     setSelectedDifficultyIdStr(match?.idStr);
   }, [selectedLevel, difficultyOptions]);
 
+  // Load question types
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const types = await questionTypeApi.getQuestionTypes();
+        if (!cancelled) setQuestionTypes(types);
+      } catch (err) {
+        // Silently ignore; submit will handle missing selection
+        console.error('Error fetching question types:', err);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, []);
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
@@ -119,6 +137,7 @@ const QuestionUploadForm: React.FC = () => {
         chapterName: form.chapterName,
         topicName: form.topicName,
         difficultyLevel: form.difficultyLevel,
+        questionType: '',
         questionText: '',
         questionImage: null,
         options: [
@@ -216,6 +235,24 @@ const QuestionUploadForm: React.FC = () => {
               ))}
             </select>
             {getFieldError('difficultyLevel') && (<p className="mt-1 text-sm text-red-600">{getFieldError('difficultyLevel')}</p>)}
+          </div>
+
+          {/* Question Type Selection */}
+          <div>
+            <label htmlFor="questionType" className="block text-sm font-medium text-gray-700 mb-2">Question Type *</label>
+            <select
+              id="questionType"
+              value={form.questionType}
+              onChange={(e) => handleInputChange('questionType', e.target.value)}
+              className={`w-full px-3 py-2 border rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-primary-500 ${getFieldError('questionType') ? 'border-red-500' : 'border-gray-300'}`}
+              disabled={isLoading}
+            >
+              <option value="">Select question type</option>
+              {questionTypes.map((type, index) => (
+                <option key={index} value={type.question_type}>{type.question_type}</option>
+              ))}
+            </select>
+            {getFieldError('questionType') && (<p className="mt-1 text-sm text-red-600">{getFieldError('questionType')}</p>)}
           </div>
 
           {/* Question Text */}

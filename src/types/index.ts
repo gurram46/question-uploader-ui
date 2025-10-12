@@ -10,6 +10,7 @@ export interface Question {
   chapterName?: string;
   topicName: string;
   difficultyLevel: number;
+  questionType: string;
   questionText: string;
   questionImage?: string;
   options: Option[];
@@ -26,6 +27,7 @@ export interface QuestionRow {
   difficulty_id?: number | string; // Backend returns numeric id on /getquestions
   difficulty_level?: number | string; // Backend might send as string
   difficulty_type?: string; // Backend includes type on /getquestions
+  question_type?: string;
   question_text: string;
   question_image?: string;
   option_id?: number;
@@ -46,6 +48,7 @@ export interface GroupedQuestion {
   topic_name: string;
   difficulty_level?: number;
   difficulty_type?: string;
+  question_type?: string;
   question_text: string;
   question_image?: string;
   options: Array<{
@@ -67,6 +70,11 @@ export interface Difficulty {
   difficulty_type: string;
 }
 
+// Question Types
+export interface QuestionType {
+  question_type: string;
+}
+
 // Form types
 export interface FormOption {
   option_text: string;
@@ -79,6 +87,7 @@ export interface QuestionForm {
   chapterName: string;
   topicName: string;
   difficultyLevel: number;
+  questionType: string;
   questionText: string;
   questionImage: File | null;
   options: FormOption[];
@@ -113,6 +122,7 @@ export interface QuestionPayload {
   chapterName?: string;
   topicName: string;
   difficultyLevel: number;
+  questionType: string;
   questionText: string;
   questionImage: string;
   option1: string;

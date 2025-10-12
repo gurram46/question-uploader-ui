@@ -268,6 +268,7 @@ const QuestionsList: React.FC = () => {
                 const isExpanded = expandedQuestions.has(question.question_id);
                 const difficultyInfo = getDifficultyInfo(question.difficulty_level);
                 const difficultyType = (question as any).difficulty_type ?? '';
+                const questionType = (question as any).question_type ?? '';
                 // Normalize naming differences from backend (camelCase vs snake_case)
                 const subjectName = (question as any).subjectName ?? question.subject_name;
                 const topicName = (question as any).topicName ?? question.topic_name;
@@ -305,6 +306,11 @@ const QuestionsList: React.FC = () => {
                                 {difficultyType}
                               </span>
                             )}
+                            {questionType && (
+                              <span className="hidden sm:inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
+                                {questionType}
+                              </span>
+                            )}
                           </div>
                           {/* Badges moved to second row on mobile for better wrap */}
                           <div className="flex sm:hidden items-center gap-2 mb-2">
@@ -314,6 +320,11 @@ const QuestionsList: React.FC = () => {
                             {difficultyType && (
                               <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-800">
                                 {difficultyType}
+                              </span>
+                            )}
+                            {questionType && (
+                              <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
+                                {questionType}
                               </span>
                             )}
                           </div>

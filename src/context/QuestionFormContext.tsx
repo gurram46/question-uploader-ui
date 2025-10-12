@@ -17,6 +17,7 @@ const DEFAULT_FORM: QuestionForm = {
   chapterName: '',
   topicName: '',
   difficultyLevel: 1,
+  questionType: '',
   questionText: '',
   questionImage: null,
   options: [

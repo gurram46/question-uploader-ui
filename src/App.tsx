@@ -11,6 +11,8 @@ type View = 'upload' | 'list';
 function App() {
   const [currentView, setCurrentView] = useState<View>('upload');
   const { toasts, removeToast } = useToast();
+  console.log("API Base URL:", process.env.REACT_APP_API_BASE_URL);
+  console.log("Environment:", process.env.REACT_APP_ENVIRONMENT);
 
   return (
     <div className="min-h-screen bg-gray-100">

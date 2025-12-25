@@ -6,13 +6,18 @@ import { useToast } from './hooks/useToast';
 import './App.css';
 import { QuestionFormProvider } from './context/QuestionFormContext';
 
-type View = 'login' | 'select' | 'upload' | 'list' | 'ai';
+type View = 'login' | 'register' | 'select' | 'upload' | 'list' | 'ai';
 
 function App() {
   const [currentView, setCurrentView] = useState<View>('login');
   const [loginUser, setLoginUser] = useState('');
   const [loginPass, setLoginPass] = useState('');
   const [loginError, setLoginError] = useState('');
+  const [currentUser, setCurrentUser] = useState('');
+  const [regUser, setRegUser] = useState('');
+  const [regPass, setRegPass] = useState('');
+  const [regPassConfirm, setRegPassConfirm] = useState('');
+  const [regError, setRegError] = useState('');
   const { toasts, removeToast } = useToast();
   console.log("API Base URL:", process.env.REACT_APP_API_BASE_URL);
   console.log("Environment:", process.env.REACT_APP_ENVIRONMENT);
@@ -24,7 +29,16 @@ function App() {
       setLoginError('Enter username and password.');
       return;
     }
+    const stored = localStorage.getItem('docquest_user');
+    const storedPass = localStorage.getItem('docquest_pass');
+    if (stored && storedPass) {
+      if (loginUser.trim() !== stored || loginPass !== storedPass) {
+        setLoginError('Invalid username or password.');
+        return;
+      }
+    }
     setLoginError('');
+    setCurrentUser(loginUser.trim());
     setCurrentView('select');
   }
 
@@ -32,7 +46,27 @@ function App() {
     setLoginUser('');
     setLoginPass('');
     setLoginError('');
+    setCurrentUser('');
     setCurrentView('login');
+  }
+
+  function handleRegister(e: React.FormEvent) {
+    e.preventDefault();
+    if (!regUser.trim() || !regPass.trim()) {
+      setRegError('Enter username and password.');
+      return;
+    }
+    if (regPass !== regPassConfirm) {
+      setRegError('Passwords do not match.');
+      return;
+    }
+    localStorage.setItem('docquest_user', regUser.trim());
+    localStorage.setItem('docquest_pass', regPass);
+    setRegError('');
+    setLoginUser(regUser.trim());
+    setLoginPass(regPass);
+    setCurrentUser(regUser.trim());
+    setCurrentView('select');
   }
 
   return (
@@ -42,12 +76,15 @@ function App() {
         <div className="max-w-6xl mx-auto px-4">
           <div className="flex flex-col gap-2 sm:flex-row sm:justify-between sm:items-center sm:h-16 py-2">
             <div className="flex items-baseline justify-between">
-              <h1 className="text-lg sm:text-xl font-bold text-gray-900 leading-tight">Question Uploader</h1>
+              <h1 className="text-lg sm:text-xl font-bold text-gray-900 leading-tight">DocQuest SuperAdmin</h1>
               <span className="ml-2 hidden sm:inline text-sm text-gray-500">Internal Database</span>
             </div>
 
             {currentView !== 'login' && (
               <div className="flex space-x-1 overflow-x-auto no-scrollbar py-1">
+                <span className="hidden sm:inline px-3 py-1.5 text-sm text-gray-500">
+                  {currentUser ? `User: ${currentUser}` : ''}
+                </span>
                 <button
                   onClick={() => setCurrentView('select')}
                   className={`px-3 py-1.5 sm:px-4 sm:py-2 text-sm font-medium rounded-md transition-colors ${
@@ -107,7 +144,7 @@ function App() {
             <div className="max-w-md mx-auto px-4">
               <div className="bg-white shadow-sm border border-gray-200 rounded-lg p-6">
                 <h2 className="text-lg font-semibold text-gray-900 mb-2">Login</h2>
-                <p className="text-sm text-gray-500 mb-6">Use your DocQuest credentials to continue.</p>
+                <p className="text-sm text-gray-500 mb-6">Use your DocQuest SuperAdmin credentials to continue.</p>
                 <form onSubmit={handleLogin} className="space-y-4">
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1">Username</label>
@@ -136,6 +173,72 @@ function App() {
                     Login
                   </button>
                 </form>
+                <div className="mt-4 text-sm text-gray-500">
+                  New user?{' '}
+                  <button
+                    type="button"
+                    onClick={() => setCurrentView('register')}
+                    className="text-primary-700 hover:text-primary-900"
+                  >
+                    Create account
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+          {currentView === 'register' && (
+            <div className="max-w-md mx-auto px-4">
+              <div className="bg-white shadow-sm border border-gray-200 rounded-lg p-6">
+                <h2 className="text-lg font-semibold text-gray-900 mb-2">Register</h2>
+                <p className="text-sm text-gray-500 mb-6">Create your DocQuest SuperAdmin account.</p>
+                <form onSubmit={handleRegister} className="space-y-4">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Username</label>
+                    <input
+                      value={regUser}
+                      onChange={e => setRegUser(e.target.value)}
+                      className="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-primary-200"
+                      placeholder="Choose a username"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Password</label>
+                    <input
+                      type="password"
+                      value={regPass}
+                      onChange={e => setRegPass(e.target.value)}
+                      className="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-primary-200"
+                      placeholder="Create a password"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Confirm Password</label>
+                    <input
+                      type="password"
+                      value={regPassConfirm}
+                      onChange={e => setRegPassConfirm(e.target.value)}
+                      className="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-primary-200"
+                      placeholder="Re-enter password"
+                    />
+                  </div>
+                  {regError && <div className="text-sm text-red-600">{regError}</div>}
+                  <button
+                    type="submit"
+                    className="w-full bg-primary-600 text-white py-2 rounded-md hover:bg-primary-700 transition-colors"
+                  >
+                    Create Account
+                  </button>
+                </form>
+                <div className="mt-4 text-sm text-gray-500">
+                  Already have an account?{' '}
+                  <button
+                    type="button"
+                    onClick={() => setCurrentView('login')}
+                    className="text-primary-700 hover:text-primary-900"
+                  >
+                    Back to login
+                  </button>
+                </div>
               </div>
             </div>
           )}
@@ -197,7 +300,7 @@ function App() {
       <footer className="bg-white border-t border-gray-200 py-6 mt-12">
         <div className="max-w-6xl mx-auto px-4 text-center">
           <p className="text-sm text-gray-500">
-            Secure Question Uploader â€¢ Internal Database Management System
+            DocQuest SuperAdmin – Internal Database Management System
           </p>
           <p className="text-xs text-gray-400 mt-1">
             Environment: {process.env.REACT_APP_ENVIRONMENT || 'development'}

@@ -14,6 +14,7 @@ function App() {
   const [loginPass, setLoginPass] = useState('');
   const [loginError, setLoginError] = useState('');
   const [currentUser, setCurrentUser] = useState('');
+  const [currentToken, setCurrentToken] = useState('');
   const [regUser, setRegUser] = useState('');
   const [regPass, setRegPass] = useState('');
   const [regPassConfirm, setRegPassConfirm] = useState('');
@@ -22,6 +23,13 @@ function App() {
   console.log("API Base URL:", process.env.REACT_APP_API_BASE_URL);
   console.log("Environment:", process.env.REACT_APP_ENVIRONMENT);
   const aiUrl = process.env.REACT_APP_AI_AUTOMATION_URL || 'http://localhost:5173';
+
+  function buildReviewToken(user: string) {
+    const allowed = ['admin', 'reviewer'];
+    const tokenUser = allowed.includes(user) ? user : 'admin';
+    const ts = Math.floor(Date.now() / 1000);
+    return `${tokenUser}:${ts}:local`;
+  }
 
   function handleLogin(e: React.FormEvent) {
     e.preventDefault();
@@ -38,7 +46,9 @@ function App() {
       }
     }
     setLoginError('');
-    setCurrentUser(loginUser.trim());
+    const user = loginUser.trim();
+    setCurrentUser(user);
+    setCurrentToken(buildReviewToken(user));
     setCurrentView('select');
   }
 
@@ -47,6 +57,7 @@ function App() {
     setLoginPass('');
     setLoginError('');
     setCurrentUser('');
+    setCurrentToken('');
     setCurrentView('login');
   }
 
@@ -65,8 +76,17 @@ function App() {
     setRegError('');
     setLoginUser(regUser.trim());
     setLoginPass(regPass);
-    setCurrentUser(regUser.trim());
+    const user = regUser.trim();
+    setCurrentUser(user);
+    setCurrentToken(buildReviewToken(user));
     setCurrentView('select');
+  }
+
+  function openAiAutomation() {
+    const token = currentToken || buildReviewToken(currentUser || 'admin');
+    const user = currentUser || 'admin';
+    const params = new URLSearchParams({ token, username: user });
+    window.location.assign(`${aiUrl}?${params.toString()}`);
   }
 
   return (
@@ -116,7 +136,7 @@ function App() {
                   View Questions
                 </button>
                 <button
-                  onClick={() => setCurrentView('ai')}
+                  onClick={openAiAutomation}
                   className={`px-3 py-1.5 sm:px-4 sm:py-2 text-sm font-medium rounded-md transition-colors ${
                     currentView === 'ai'
                       ? 'bg-primary-100 text-primary-700 border border-primary-200'
@@ -264,7 +284,7 @@ function App() {
                     Review AI-extracted questions, verify answers, and commit in bulk.
                   </p>
                   <button
-                    onClick={() => setCurrentView('ai')}
+                    onClick={openAiAutomation}
                     className="bg-primary-600 text-white px-4 py-2 rounded-md hover:bg-primary-700 transition-colors"
                   >
                     Open AI Automation
@@ -288,8 +308,16 @@ function App() {
                   Open in new tab
                 </a>
               </div>
-              <div className="ai-frame-wrapper">
-                <iframe title="AI Automation" src={aiUrl} className="ai-frame" />
+              <div className="bg-white border border-gray-200 rounded-lg p-6 shadow-sm">
+                <p className="text-sm text-gray-600 mb-4">
+                  AI Automation opens the review UI in this tab with your session token.
+                </p>
+                <button
+                  onClick={openAiAutomation}
+                  className="bg-primary-600 text-white px-4 py-2 rounded-md hover:bg-primary-700 transition-colors"
+                >
+                  Continue to AI Automation
+                </button>
               </div>
             </div>
           )}
@@ -300,7 +328,7 @@ function App() {
       <footer className="bg-white border-t border-gray-200 py-6 mt-12">
         <div className="max-w-6xl mx-auto px-4 text-center">
           <p className="text-sm text-gray-500">
-            DocQuest SuperAdmin – Internal Database Management System
+            DocQuest SuperAdmin - Internal Database Management System
           </p>
           <p className="text-xs text-gray-400 mt-1">
             Environment: {process.env.REACT_APP_ENVIRONMENT || 'development'}

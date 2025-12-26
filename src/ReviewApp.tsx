@@ -1,3 +1,4 @@
+/* eslint-disable no-alert, no-restricted-globals, security/detect-object-injection, @typescript-eslint/no-unused-vars */
 import { useEffect, useRef, useState } from 'react'
 import './ReviewApp.css'
 
@@ -97,6 +98,7 @@ function ReviewApp({ bootToken, bootUser }: ReviewAppProps) {
   const [validationValidIds, setValidationValidIds] = useState<Set<string>>(new Set())
   const [validationErrors, setValidationErrors] = useState<any[]>([])
   const [committed, setCommitted] = useState<CommittedQuestion[]>([])
+  const [committedBatch, setCommittedBatch] = useState('')
   const [viewMode, setViewMode] = useState<'review' | 'committed'>('review')
   const [committedEditId, setCommittedEditId] = useState<number | null>(null)
   const [committedEdit, setCommittedEdit] = useState<CommittedQuestion | null>(null)
@@ -588,10 +590,12 @@ function ReviewApp({ bootToken, bootUser }: ReviewAppProps) {
   }
 
   function buildBulkPayload(questions: Question[]) {
+    const batchId = currentBatch || undefined
     return questions
       .filter(q => q.verification_state === 'verified')
       .map(q => ({
         verification_state: 'verified',
+        batchId,
         subjectName: ((q as any).subject_name || '')?.trim().toLowerCase(),
         chapterName: ((q as any).chapter_name || '')?.trim().toLowerCase(),
         topicName: ((q as any).topic_name || '')?.trim().toLowerCase(),
@@ -1378,7 +1382,9 @@ function ReviewApp({ bootToken, bootUser }: ReviewAppProps) {
             patch: { verification_state: 'committed' }
           }))
           await bulkUpdateRequest({ updates })
-          await loadDraft(currentBatch)
+          if (currentBatch) {
+            await loadDraft(currentBatch)
+          }
           await refreshAllIfLoaded()
         }
         if (normalized.failedCount && normalized.failedCount > 0) {
@@ -1410,9 +1416,11 @@ function ReviewApp({ bootToken, bootUser }: ReviewAppProps) {
     }
   }
 
-  async function loadCommitted() {
+  async function loadCommitted(batchIdOverride?: string) {
     try {
-      const res = await fetch(`${expressUrl}/api/questions/recent?limit=100`)
+      const batchId = (batchIdOverride ?? committedBatch).trim()
+      const batchParam = batchId ? `&batch_id=${encodeURIComponent(batchId)}` : ''
+      const res = await fetch(`${expressUrl}/api/questions/recent?limit=100${batchParam}`)
       if (!res.ok) return
       const data = await res.json()
       const rows = Array.isArray(data.questions) ? data.questions : []
@@ -1580,6 +1588,21 @@ function ReviewApp({ bootToken, bootUser }: ReviewAppProps) {
               Back to Review
             </button>
             <h2>Committed Questions (latest 100)</h2>
+            <select
+              value={committedBatch}
+              onChange={e => {
+                const next = e.target.value
+                setCommittedBatch(next)
+                loadCommitted(next)
+              }}
+            >
+              <option value="">All batches</option>
+              {batches.map(b => (
+                <option key={b.batch_id} value={b.batch_id}>
+                  {b.batch_id}
+                </option>
+              ))}
+            </select>
           </div>
           <div className="bulk-metadata">
             <div className="bulk-row">

@@ -128,6 +128,7 @@ function ReviewApp({ bootToken, bootUser }: ReviewAppProps) {
   const [uiNotice, setUiNotice] = useState('')
   const [actionStatus, setActionStatus] = useState<{ state: 'idle' | 'working' | 'success' | 'error', message: string }>({ state: 'idle', message: '' })
   const [actionSticky, setActionSticky] = useState(false)
+  const [autoMarkDuplicates, setAutoMarkDuplicates] = useState(true)
   const [currentPage, setCurrentPage] = useState(1)
   const [pageSize, setPageSize] = useState(200)
   const [sourcePage, setSourcePage] = useState<number | null>(null)
@@ -1226,6 +1227,26 @@ function ReviewApp({ bootToken, bootUser }: ReviewAppProps) {
     return questionsForView.filter(q => selectedIds.has(q.question_id))
   }
 
+  function getQuestionsForFailed(): Question[] {
+    if (!questionsForView.length) return []
+    return questionsForView.filter(q => validationFailedIds.has(q.question_id))
+  }
+
+  function selectFailedAndRun(action: 'validate' | 'commit') {
+    if (validationFailedIds.size === 0) {
+      alert('No failed questions to retry.')
+      return
+    }
+    setSelectedIds(new Set(validationFailedIds))
+    window.setTimeout(() => {
+      if (action === 'validate') {
+        validateBulk('selected')
+      } else {
+        commitBulk('selected')
+      }
+    }, 0)
+  }
+
   async function validateBulk(mode: 'all' | 'selected' | 'range' = 'all') {
     if (!draft?.questions) return
     let sticky = false
@@ -1268,22 +1289,30 @@ function ReviewApp({ bootToken, bootUser }: ReviewAppProps) {
       const errors = Array.isArray(normalized.errors) ? normalized.errors : []
       setValidationErrors(errors)
       const failedIds = new Set<string>()
+      const duplicateIds = new Set<string>()
       for (const err of errors) {
         const idx = typeof err?.index === 'number' ? err.index : -1
         const q = idx >= 0 ? source[idx] : null
-        if (q?.question_id) failedIds.add(q.question_id)
+        if (q?.question_id) {
+          if (err?.reason === 'DUPLICATE_IN_DB') {
+            duplicateIds.add(q.question_id)
+          } else {
+            failedIds.add(q.question_id)
+          }
+        }
       }
       const validIds = new Set<string>()
       for (const q of source) {
-        if (q?.question_id && !failedIds.has(q.question_id)) {
+        if (q?.question_id && !failedIds.has(q.question_id) && !duplicateIds.has(q.question_id)) {
           validIds.add(q.question_id)
         }
       }
       setValidationFailedIds(failedIds)
       setValidationValidIds(validIds)
       setShowValidation(true)
-      if (normalized.failedCount > 0) {
-        setActionStatus({ state: 'error', message: `Validation failed for ${normalized.failedCount} question(s).` })
+      const nonDuplicateFailed = failedIds.size
+      if (nonDuplicateFailed > 0) {
+        setActionStatus({ state: 'error', message: `Validation failed for ${nonDuplicateFailed} question(s).` })
         setActionSticky(true)
         sticky = true
         setValidationFilter('failed')
@@ -1296,6 +1325,16 @@ function ReviewApp({ bootToken, bootUser }: ReviewAppProps) {
         sticky = false
         setValidationFilter('all')
         setFilter('all')
+      }
+      if (autoMarkDuplicates && duplicateIds.size > 0 && currentBatch) {
+        const updates = Array.from(duplicateIds).map(id => ({
+          question_id: id,
+          patch: { verification_state: 'committed' }
+        }))
+        await bulkUpdateRequest({ updates })
+        await loadDraft(currentBatch)
+        await refreshAllIfLoaded()
+        setUiNotice(`Skipped ${duplicateIds.size} duplicate question(s) already in DB.`)
       }
       console.info('[validate] done', { valid: normalized.validCount, failed: normalized.failedCount, skipped: normalized.skippedCount })
     } catch (err: any) {
@@ -1449,6 +1488,32 @@ function ReviewApp({ bootToken, bootUser }: ReviewAppProps) {
     }
   }
 
+  function downloadCommittedCsv() {
+    if (!committed.length) {
+      alert('No committed questions to export.')
+      return
+    }
+    const header = ['question_id', 'question_text', 'subject', 'chapter', 'topic', 'difficulty_level', 'difficulty_type', 'question_type']
+    const rows = committed.map(q => [
+      q.id ?? '',
+      (q.question_text || '').replace(/\n/g, ' ').trim(),
+      q.subject_name || '',
+      q.chapter_name || '',
+      q.topic_name || '',
+      q.difficulty_level ?? '',
+      q.difficulty_type || '',
+      q.question_type || ''
+    ])
+    const csv = [header, ...rows].map(r => r.map(v => `"${String(v).replace(/"/g, '""')}"`).join(',')).join('\n')
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' })
+    const link = document.createElement('a')
+    const batchLabel = committedBatch ? `_${committedBatch}` : ''
+    link.href = URL.createObjectURL(blob)
+    link.download = `committed_questions${batchLabel}.csv`
+    link.click()
+    URL.revokeObjectURL(link.href)
+  }
+
   const questionsForView = allQuestions || (draft?.questions || [])
   const sourcePages = Array.from(
     new Set(questionsForView.map(q => q.source_page).filter(n => Number.isFinite(n)))
@@ -1473,6 +1538,8 @@ function ReviewApp({ bootToken, bootUser }: ReviewAppProps) {
     verified: questionsForView.filter(q => q.verification_state === 'verified').length || 0,
     pending: questionsForView.filter(q => q.verification_state !== 'verified' && q.verification_state !== 'rejected').length || 0
   }
+  const duplicateCount = validationErrors.filter(e => e?.reason === 'DUPLICATE_IN_DB').length
+  const failedCount = validationFailedIds.size
   const selectedCount = selectedIds.size
 
   function formatValidationError(e: any, q: any) {
@@ -1621,6 +1688,9 @@ function ReviewApp({ bootToken, bootUser }: ReviewAppProps) {
                 </option>
               ))}
             </select>
+            <button className="btn small" onClick={downloadCommittedCsv}>
+              Download CSV
+            </button>
           </div>
           <div className="bulk-metadata">
             <div className="bulk-row">
@@ -1721,6 +1791,20 @@ function ReviewApp({ bootToken, bootUser }: ReviewAppProps) {
                 )}
               </div>
               <div className="actions-row">
+                <span className="actions-meta">Verified: {stats.verified}</span>
+                <span className="actions-meta">Pending: {stats.pending}</span>
+                <span className="actions-meta">Failed: {failedCount}</span>
+                <span className="actions-meta">Duplicates: {duplicateCount}</span>
+                <label className="actions-meta" style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
+                  <input
+                    type="checkbox"
+                    checked={autoMarkDuplicates}
+                    onChange={e => setAutoMarkDuplicates(e.target.checked)}
+                  />
+                  Auto-mark duplicates
+                </label>
+              </div>
+              <div className="actions-row">
                 <input
                   type="number"
                   placeholder="Range start"
@@ -1764,6 +1848,14 @@ function ReviewApp({ bootToken, bootUser }: ReviewAppProps) {
                 </button>
                 <button className="btn small" onClick={addQuestion} disabled={actionStatus.state === 'working' || !currentBatch}>
                   Add question
+                </button>
+              </div>
+              <div className="actions-row">
+                <button className="btn small" onClick={() => selectFailedAndRun('validate')} disabled={actionStatus.state === 'working' || failedCount === 0}>
+                  Validate failed only
+                </button>
+                <button className="btn small" onClick={() => selectFailedAndRun('commit')} disabled={actionStatus.state === 'working' || failedCount === 0}>
+                  Commit failed only
                 </button>
               </div>
             </div>

@@ -1294,7 +1294,7 @@ function ReviewApp({ bootToken, bootUser }: ReviewAppProps) {
         const idx = typeof err?.index === 'number' ? err.index : -1
         const q = idx >= 0 ? source[idx] : null
         if (q?.question_id) {
-          if (err?.reason === 'DUPLICATE_IN_DB') {
+          if ((err as any)?.reason === 'DUPLICATE_IN_DB') {
             duplicateIds.add(q.question_id)
           } else {
             failedIds.add(q.question_id)
@@ -1332,7 +1332,9 @@ function ReviewApp({ bootToken, bootUser }: ReviewAppProps) {
           patch: { verification_state: 'committed' }
         }))
         await bulkUpdateRequest({ updates })
-        await loadDraft(currentBatch)
+        if (currentBatch) {
+          await loadDraft(currentBatch)
+        }
         await refreshAllIfLoaded()
         setUiNotice(`Skipped ${duplicateIds.size} duplicate question(s) already in DB.`)
       }
@@ -1400,7 +1402,7 @@ function ReviewApp({ bootToken, bootUser }: ReviewAppProps) {
         const idx = typeof err?.index === 'number' ? err.index : -1
         const q = idx >= 0 ? sourceQuestions[idx] : null
         if (q?.question_id) {
-          if (err?.reason === 'DUPLICATE_IN_DB') {
+          if ((err as any)?.reason === 'DUPLICATE_IN_DB') {
             duplicateIds.add(q.question_id)
           } else {
             failedIds.add(q.question_id)
@@ -1423,7 +1425,9 @@ function ReviewApp({ bootToken, bootUser }: ReviewAppProps) {
           patch: { verification_state: 'committed' }
         }))
         await bulkUpdateRequest({ updates })
-        await loadDraft(currentBatch)
+        if (currentBatch) {
+          await loadDraft(currentBatch)
+        }
         await refreshAllIfLoaded()
         setUiNotice(`Skipped ${duplicateCount} duplicate question(s) already in DB.`)
       }

@@ -1356,20 +1356,38 @@ function ReviewApp({ bootToken, bootUser }: ReviewAppProps) {
       setValidationErrors(errors)
       const sourceQuestions = source.filter(q => q.verification_state === 'verified')
       const failedIds = new Set<string>()
+      const duplicateIds = new Set<string>()
       for (const err of errors) {
         const idx = typeof err?.index === 'number' ? err.index : -1
         const q = idx >= 0 ? sourceQuestions[idx] : null
-        if (q?.question_id) failedIds.add(q.question_id)
+        if (q?.question_id) {
+          if (err?.reason === 'DUPLICATE_IN_DB') {
+            duplicateIds.add(q.question_id)
+          } else {
+            failedIds.add(q.question_id)
+          }
+        }
       }
       const validIds = new Set<string>()
       for (const q of sourceQuestions) {
-        if (q?.question_id && !failedIds.has(q.question_id)) {
+        if (q?.question_id && !failedIds.has(q.question_id) && !duplicateIds.has(q.question_id)) {
           validIds.add(q.question_id)
         }
       }
       setValidationFailedIds(failedIds)
       setValidationValidIds(validIds)
       setShowValidation(true)
+      const duplicateCount = duplicateIds.size
+      if (duplicateCount > 0) {
+        const updates = Array.from(duplicateIds).map(id => ({
+          question_id: id,
+          patch: { verification_state: 'committed' }
+        }))
+        await bulkUpdateRequest({ updates })
+        await loadDraft(currentBatch)
+        await refreshAllIfLoaded()
+        setUiNotice(`Skipped ${duplicateCount} duplicate question(s) already in DB.`)
+      }
       if (normalized.insertedCount && normalized.insertedCount > 0) {
         setActionStatus({ state: 'success', message: `Inserted ${normalized.insertedCount} question(s).` })
         setActionSticky(false)
@@ -1557,7 +1575,7 @@ function ReviewApp({ bootToken, bootUser }: ReviewAppProps) {
     <div className="review-scope">
       <div className="app">
       <header className="header">
-        <h1>DocQuest Review</h1>
+        <h1></h1>
         <div className="header-tabs">
           <button
             className={`tab ${viewMode === 'review' ? 'active' : ''}`}
@@ -1567,7 +1585,7 @@ function ReviewApp({ bootToken, bootUser }: ReviewAppProps) {
           </button>
           <button
             className={`tab ${viewMode === 'committed' ? 'active' : ''}`}
-            onClick={loadCommitted}
+            onClick={() => loadCommitted()}
           >
             Committed
           </button>

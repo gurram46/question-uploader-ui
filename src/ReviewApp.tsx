@@ -129,6 +129,8 @@ function ReviewApp({ bootToken, bootUser }: ReviewAppProps) {
   const [actionStatus, setActionStatus] = useState<{ state: 'idle' | 'working' | 'success' | 'error', message: string }>({ state: 'idle', message: '' })
   const [actionSticky, setActionSticky] = useState(false)
   const [autoMarkDuplicates, setAutoMarkDuplicates] = useState(true)
+  const [tourOpen, setTourOpen] = useState(false)
+  const [tourStep, setTourStep] = useState(0)
   const [currentPage, setCurrentPage] = useState(1)
   const [pageSize, setPageSize] = useState(200)
   const [sourcePage, setSourcePage] = useState<number | null>(null)
@@ -183,6 +185,14 @@ function ReviewApp({ bootToken, bootUser }: ReviewAppProps) {
     }
     if (maxNum > 0) setAnswerKeyMaxQ(String(maxNum))
   }, [allQuestions, answerKeyMaxQ])
+
+  useEffect(() => {
+    const key = 'dq_review_tour_done'
+    if (!localStorage.getItem(key)) {
+      setTourOpen(true)
+      setTourStep(0)
+    }
+  }, [])
 
   function authHeaders(): Record<string, string> {
     return token ? { Authorization: `Bearer ${token}` } : {}
@@ -279,9 +289,22 @@ function ReviewApp({ bootToken, bootUser }: ReviewAppProps) {
       headers: authHeaders(),
       body: formData
     })
+    if (!res.ok) {
+      const msg = await res.text()
+      setUploadProgress(msg || 'Upload failed')
+      setUploading(false)
+      return
+    }
     const data = await res.json()
     const jobId = data.job_id
     const batchId = data.batch_id
+    if (!jobId || !batchId) {
+      setUploadProgress('Upload failed: missing job id')
+      setUploading(false)
+      return
+    }
+    setCurrentBatch(batchId)
+    await loadBatches()
 
     let lastProgress = -1
     while (true) {
@@ -656,7 +679,7 @@ function ReviewApp({ bootToken, bootUser }: ReviewAppProps) {
       }
       const res = await fetch(`${expressUrl}/api/questions/${committedEditId}`, {
         method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', ...authHeaders() },
         body: JSON.stringify(payload)
       })
       if (!res.ok) {
@@ -1131,7 +1154,7 @@ function ReviewApp({ bootToken, bootUser }: ReviewAppProps) {
       if (Object.keys(patch).length > 0) {
         await fetch(`${expressUrl}/api/questions/${q.id}`, {
           method: 'PUT',
-          headers: { 'Content-Type': 'application/json' },
+          headers: { 'Content-Type': 'application/json', ...authHeaders() },
           body: JSON.stringify(patch)
         })
       }
@@ -1224,12 +1247,12 @@ function ReviewApp({ bootToken, bootUser }: ReviewAppProps) {
 
   function getQuestionsForSelected(): Question[] {
     if (!questionsForView.length) return []
-    return questionsForView.filter(q => selectedIds.has(q.question_id))
+    return questionsForView.filter((q: Question) => selectedIds.has(q.question_id))
   }
 
   function getQuestionsForFailed(): Question[] {
     if (!questionsForView.length) return []
-    return questionsForView.filter(q => validationFailedIds.has(q.question_id))
+    return questionsForView.filter((q: Question) => validationFailedIds.has(q.question_id))
   }
 
   function selectFailedAndRun(action: 'validate' | 'commit') {
@@ -1267,7 +1290,7 @@ function ReviewApp({ bootToken, bootUser }: ReviewAppProps) {
       setActionStatus({ state: 'working', message: 'Validating...' })
       const res = await fetch(`${expressUrl}/api/questions/validate`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', ...authHeaders() },
         body: JSON.stringify({ questions: payload }),
         signal: controller.signal
       })
@@ -1373,7 +1396,7 @@ function ReviewApp({ bootToken, bootUser }: ReviewAppProps) {
       setActionStatus({ state: 'working', message: 'Committing...' })
       const res = await fetch(`${expressUrl}/api/questions/bulk`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', ...authHeaders() },
         body: JSON.stringify({ questions: payload }),
         signal: controller.signal
       })
@@ -1481,7 +1504,9 @@ function ReviewApp({ bootToken, bootUser }: ReviewAppProps) {
     try {
       const batchId = (batchIdOverride ?? committedBatch).trim()
       const batchParam = batchId ? `&batch_id=${encodeURIComponent(batchId)}` : ''
-      const res = await fetch(`${expressUrl}/api/questions/recent?limit=100${batchParam}`)
+      const res = await fetch(`${expressUrl}/api/questions/recent?limit=100${batchParam}`, {
+        headers: { ...authHeaders() }
+      })
       if (!res.ok) return
       const data = await res.json()
       const rows = Array.isArray(data.questions) ? data.questions : []
@@ -1518,33 +1543,66 @@ function ReviewApp({ bootToken, bootUser }: ReviewAppProps) {
     URL.revokeObjectURL(link.href)
   }
 
-  const questionsForView = allQuestions || (draft?.questions || [])
+  const pageQuestions = draft?.questions || []
+  const questionsForView = allQuestions || pageQuestions
   const sourcePages = Array.from(
     new Set(questionsForView.map(q => q.source_page).filter(n => Number.isFinite(n)))
   ).sort((a, b) => a - b)
   const validationFilteredQuestions = validationFilter === 'failed'
-    ? questionsForView.filter(q => validationFailedIds.has(q.question_id))
+    ? questionsForView.filter((q: Question) => validationFailedIds.has(q.question_id))
     : validationFilter === 'valid'
-      ? questionsForView.filter(q => validationValidIds.has(q.question_id))
-      : questionsForView
+      ? questionsForView.filter((q: Question) => validationValidIds.has(q.question_id))
+      : pageQuestions
   const filteredQuestions = validationFilteredQuestions
-    .filter(q => (validationFilter !== 'all' ? true : (sourcePage ? q.source_page === sourcePage : true)))
-    .filter(q => {
+    .filter((q: Question) => (validationFilter !== 'all' ? true : (sourcePage ? q.source_page === sourcePage : true)))
+    .filter((q: Question) => {
       if (filter === 'all') return true
       if (filter === 'verified') return q.verification_state === 'verified'
       if (filter === 'pending') return q.verification_state !== 'verified' && q.verification_state !== 'rejected'
       return true
     })
-    .sort((a, b) => (a.source_page || 0) - (b.source_page || 0))
+    .sort((a: Question, b: Question) => (a.source_page || 0) - (b.source_page || 0))
 
   const stats = {
     total: questionsForView.length || 0,
-    verified: questionsForView.filter(q => q.verification_state === 'verified').length || 0,
-    pending: questionsForView.filter(q => q.verification_state !== 'verified' && q.verification_state !== 'rejected').length || 0
+    verified: questionsForView.filter((q: Question) => q.verification_state === 'verified').length || 0,
+    pending: questionsForView.filter((q: Question) => q.verification_state !== 'verified' && q.verification_state !== 'rejected').length || 0
   }
   const duplicateCount = validationErrors.filter(e => e?.reason === 'DUPLICATE_IN_DB').length
   const failedCount = validationFailedIds.size
   const selectedCount = selectedIds.size
+  const tourSteps = getTourSteps()
+  const tourTotal = tourSteps.length
+  const activeTour = tourOpen && tourSteps[tourStep]
+
+  function getTourSteps() {
+    return [
+      { selector: '[data-tour="sidebar"]', title: 'Batches', body: 'Pick a batch to load questions from one PDF.' },
+      { selector: '[data-tour="pagination"]', title: 'Pages', body: 'Use the page selector to review one source_page at a time.' },
+      { selector: '[data-tour="actions"]', title: 'Validate + Commit', body: 'Validate checks required fields. Commit sends verified questions to DB.' },
+      { selector: '[data-tour="bulk-meta"]', title: 'Bulk Metadata', body: 'Apply subject/chapter/topic, difficulty, and question type in bulk.' },
+      { selector: '[data-tour="answer-key"]', title: 'Answer Key', body: 'Paste or upload keys, then apply to page or range.' },
+      { selector: '[data-tour="filters"]', title: 'Filters', body: 'Filter by pending/verified/failed after validation.' }
+    ]
+  }
+
+  function closeTour() {
+    localStorage.setItem('dq_review_tour_done', '1')
+    setTourOpen(false)
+  }
+
+  function nextTour() {
+    if (tourStep + 1 >= tourTotal) {
+      closeTour()
+      return
+    }
+    setTourStep(tourStep + 1)
+  }
+
+  function prevTour() {
+    if (tourStep === 0) return
+    setTourStep(tourStep - 1)
+  }
 
   function formatValidationError(e: any, q: any) {
     const field = e?.field || 'unknown'
@@ -1643,8 +1701,31 @@ function ReviewApp({ bootToken, bootUser }: ReviewAppProps) {
   }
 
   return (
-    <div className="review-scope">
+      <div className="review-scope">
       <div className="app">
+        {activeTour && (
+          <div className="tour-overlay">
+            <div className="tour-backdrop" onClick={closeTour} />
+            <div className="tour-card">
+              <div className="tour-title">{activeTour.title}</div>
+              <div className="tour-body">{activeTour.body}</div>
+              <div className="tour-actions">
+                <span className="tour-step">Step {tourStep + 1} / {tourTotal}</span>
+                <div className="tour-buttons">
+                  <button className="btn small" onClick={prevTour} disabled={tourStep === 0}>
+                    Back
+                  </button>
+                  <button className="btn small" onClick={nextTour}>
+                    {tourStep + 1 === tourTotal ? 'Done' : 'Next'}
+                  </button>
+                  <button className="btn small" onClick={closeTour}>
+                    Skip
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
       <header className="header">
         <h1></h1>
         <div className="header-tabs">
@@ -1659,6 +1740,15 @@ function ReviewApp({ bootToken, bootUser }: ReviewAppProps) {
             onClick={() => loadCommitted()}
           >
             Committed
+          </button>
+          <button
+            className="tab"
+            onClick={() => {
+              setTourStep(0)
+              setTourOpen(true)
+            }}
+          >
+            Help
           </button>
         </div>
         <div className="stats">
@@ -1747,11 +1837,11 @@ function ReviewApp({ bootToken, bootUser }: ReviewAppProps) {
 
       {viewMode === 'review' && (
         <div className="main">
-          <aside className="sidebar">
+          <aside className="sidebar" data-tour="sidebar">
             <div className="upload-area">
               <label className="upload-label">
-                <span>{uploading ? 'Processing...' : 'Upload PDF'}</span>
-                <input type="file" accept=".pdf" onChange={uploadFile} disabled={uploading} />
+                <span>{uploading ? 'Processing...' : 'Upload PDF/DOCX'}</span>
+                <input type="file" accept=".pdf,.docx" onChange={uploadFile} disabled={uploading} />
               </label>
               {uploadProgress && <p className="progress">{uploadProgress}</p>}
             </div>
@@ -1765,7 +1855,6 @@ function ReviewApp({ bootToken, bootUser }: ReviewAppProps) {
                   setCurrentPage(1)
                   setAllQuestions(null)
                   loadDraft(b.batch_id, 1, pageSize)
-                  loadAllQuestions(b.batch_id)
                 }}
               >
                 <span className="batch-id">{b.batch_id}</span>
@@ -1775,7 +1864,7 @@ function ReviewApp({ bootToken, bootUser }: ReviewAppProps) {
           </aside>
 
           <main className="content">
-            <div className="actions-panel">
+            <div className="actions-panel" data-tour="actions">
               <div className="actions-row">
                 <span className="actions-title">Actions</span>
                 <span className="actions-meta">{selectedCount} selected</span>
@@ -1847,6 +1936,9 @@ function ReviewApp({ bootToken, bootUser }: ReviewAppProps) {
                 <button className="btn small" onClick={() => commitBulk('all')} disabled={actionStatus.state === 'working'}>
                   Commit all
                 </button>
+                <button className="btn small" onClick={() => currentBatch && loadAllQuestions(currentBatch)} disabled={actionStatus.state === 'working' || !currentBatch || allLoading}>
+                  {allLoading ? 'Loading pages...' : 'Load all pages'}
+                </button>
                 <button className="btn small" onClick={verifyAllValid} disabled={actionStatus.state === 'working'}>
                   Verify all valid
                 </button>
@@ -1863,7 +1955,7 @@ function ReviewApp({ bootToken, bootUser }: ReviewAppProps) {
                 </button>
               </div>
             </div>
-            <div className="bulk-metadata">
+            <div className="bulk-metadata" data-tour="bulk-meta">
               {uiError && <div className="committed-error">{uiError}</div>}
               {uiNotice && <div className="committed-meta">{uiNotice}</div>}
               <div className="bulk-row">
@@ -1910,7 +2002,7 @@ function ReviewApp({ bootToken, bootUser }: ReviewAppProps) {
                 </button>
                 <button
                   className="btn small"
-                  onClick={() => setSelectedIds(new Set(filteredQuestions.map(q => q.question_id)))}
+                  onClick={() => setSelectedIds(new Set(filteredQuestions.map((q: Question) => q.question_id)))}
                 >
                   Select page
                 </button>
@@ -1918,7 +2010,7 @@ function ReviewApp({ bootToken, bootUser }: ReviewAppProps) {
                   Clear selection
                 </button>
               </div>
-              <div className="bulk-row">
+              <div className="bulk-row" data-tour="answer-key">
                 <input
                   type="file"
                   accept=".png,.jpg,.jpeg,.pdf"
@@ -2066,14 +2158,14 @@ function ReviewApp({ bootToken, bootUser }: ReviewAppProps) {
                 </button>
               </div>
             </div>
-            <div className="filters">
+            <div className="filters" data-tour="filters">
               {['all', 'pending', 'verified'].map(f => (
                 <button key={f} className={filter === f ? 'active' : ''} onClick={() => setFilter(f)}>
                   {f.charAt(0).toUpperCase() + f.slice(1)}
                 </button>
               ))}
             </div>
-            <div className="pagination">
+            <div className="pagination" data-tour="pagination">
               <button
                 className="btn small"
                 disabled={sourcePages.length === 0 || sourcePage === null || sourcePages.indexOf(sourcePage) <= 0}
@@ -2117,7 +2209,7 @@ function ReviewApp({ bootToken, bootUser }: ReviewAppProps) {
                   No questions on this page. Pick another page from the selector.
                 </div>
               )}
-              {filteredQuestions.map((q, i) => (
+              {filteredQuestions.map((q: Question, i: number) => (
                 <QuestionCard
                   key={q.question_id}
                   question={q}
@@ -2798,6 +2890,7 @@ function CommittedQuestionCard({ question: q, isEditing, editValue, onEdit, onCa
     </div>
   )
 }
+
 
 
 

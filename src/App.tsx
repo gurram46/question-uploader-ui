@@ -9,50 +9,81 @@ import ReviewApp from './ReviewApp';
 
 type View = 'login' | 'register' | 'select' | 'upload' | 'list' | 'ai';
 
+const API_BASE = process.env.REACT_APP_API_BASE_URL || 'http://localhost:3000';
+
 function App() {
   const [currentView, setCurrentView] = useState<View>('login');
   const [loginUser, setLoginUser] = useState('');
   const [loginPass, setLoginPass] = useState('');
   const [loginError, setLoginError] = useState('');
-  const [currentUser, setCurrentUser] = useState('');
-  const [currentToken, setCurrentToken] = useState('');
+  const [loginLoading, setLoginLoading] = useState(false);
+  const [currentUser, setCurrentUser] = useState(() => localStorage.getItem('username') || '');
+  const [currentToken, setCurrentToken] = useState(() => localStorage.getItem('token') || '');
   const [regUser, setRegUser] = useState('');
+  const [regEmail, setRegEmail] = useState('');
   const [regPass, setRegPass] = useState('');
   const [regPassConfirm, setRegPassConfirm] = useState('');
   const [regError, setRegError] = useState('');
+  const [regLoading, setRegLoading] = useState(false);
   const { toasts, removeToast } = useToast();
   console.log("API Base URL:", process.env.REACT_APP_API_BASE_URL);
   console.log("Environment:", process.env.REACT_APP_ENVIRONMENT);
 
-  function buildReviewToken(user: string) {
-    const allowed = ['admin', 'reviewer'];
-    const tokenUser = allowed.includes(user) ? user : 'admin';
-    const ts = Math.floor(Date.now() / 1000);
-    return `${tokenUser}:${ts}:local`;
-  }
+  // Check if already logged in on mount
+  React.useEffect(() => {
+    const token = localStorage.getItem('token');
+    const user = localStorage.getItem('username');
+    if (token && user) {
+      setCurrentToken(token);
+      setCurrentUser(user);
+      setCurrentView('select');
+    }
+  }, []);
 
-  function handleLogin(e: React.FormEvent) {
+  async function handleLogin(e: React.FormEvent) {
     e.preventDefault();
     if (!loginUser.trim() || !loginPass.trim()) {
       setLoginError('Enter username and password.');
       return;
     }
-    const stored = localStorage.getItem('docquest_user');
-    const storedPass = localStorage.getItem('docquest_pass');
-    if (stored && storedPass) {
-      if (loginUser.trim() !== stored || loginPass !== storedPass) {
-        setLoginError('Invalid username or password.');
+
+    setLoginLoading(true);
+    setLoginError('');
+
+    try {
+      const res = await fetch(`${API_BASE}/auth/login`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username: loginUser.trim(), password: loginPass })
+      });
+
+      const data = await res.json();
+
+      if (!res.ok) {
+        setLoginError(data.error || 'Invalid credentials');
+        setLoginLoading(false);
         return;
       }
+
+      // Store token and user info
+      localStorage.setItem('token', data.token);
+      localStorage.setItem('username', data.user.username);
+      localStorage.setItem('userRole', data.user.role);
+
+      setCurrentToken(data.token);
+      setCurrentUser(data.user.username);
+      setCurrentView('select');
+    } catch (err: any) {
+      setLoginError('Connection error. Is the server running?');
     }
-    setLoginError('');
-    const user = loginUser.trim();
-    setCurrentUser(user);
-    setCurrentToken(buildReviewToken(user));
-    setCurrentView('select');
+
+    setLoginLoading(false);
   }
 
   function handleLogout() {
+    localStorage.removeItem('token');
+    localStorage.removeItem('username');
+    localStorage.removeItem('userRole');
     setLoginUser('');
     setLoginPass('');
     setLoginError('');
@@ -61,32 +92,56 @@ function App() {
     setCurrentView('login');
   }
 
-  function handleRegister(e: React.FormEvent) {
+  async function handleRegister(e: React.FormEvent) {
     e.preventDefault();
-    if (!regUser.trim() || !regPass.trim()) {
-      setRegError('Enter username and password.');
+    if (!regUser.trim() || !regEmail.trim() || !regPass.trim()) {
+      setRegError('All fields are required.');
       return;
     }
     if (regPass !== regPassConfirm) {
       setRegError('Passwords do not match.');
       return;
     }
-    localStorage.setItem('docquest_user', regUser.trim());
-    localStorage.setItem('docquest_pass', regPass);
+
+    setRegLoading(true);
     setRegError('');
-    setLoginUser(regUser.trim());
-    setLoginPass(regPass);
-    const user = regUser.trim();
-    setCurrentUser(user);
-    setCurrentToken(buildReviewToken(user));
-    setCurrentView('select');
+
+    try {
+      const res = await fetch(`${API_BASE}/auth/register`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          username: regUser.trim(),
+          email: regEmail.trim(),
+          password: regPass,
+          role: 'sub_admin'
+        })
+      });
+
+      const data = await res.json();
+
+      if (!res.ok) {
+        setRegError(data.error || 'Registration failed');
+        setRegLoading(false);
+        return;
+      }
+
+      // Store token and user info
+      localStorage.setItem('token', data.token);
+      localStorage.setItem('username', data.user.username);
+      localStorage.setItem('userRole', data.user.role);
+
+      setCurrentToken(data.token);
+      setCurrentUser(data.user.username);
+      setCurrentView('select');
+    } catch (err: any) {
+      setRegError('Connection error. Is the server running?');
+    }
+
+    setRegLoading(false);
   }
 
   function openAiAutomation() {
-    const token = currentToken || buildReviewToken(currentUser || 'admin');
-    const user = currentUser || 'admin';
-    setCurrentToken(token);
-    setCurrentUser(user);
     setCurrentView('ai');
   }
 
@@ -108,41 +163,37 @@ function App() {
                 </span>
                 <button
                   onClick={() => setCurrentView('select')}
-                  className={`px-3 py-1.5 sm:px-4 sm:py-2 text-sm font-medium rounded-md transition-colors ${
-                    currentView === 'select'
-                      ? 'bg-primary-100 text-primary-700 border border-primary-200'
-                      : 'text-gray-600 hover:text-gray-900 hover:bg-gray-100'
-                  }`}
+                  className={`px-3 py-1.5 sm:px-4 sm:py-2 text-sm font-medium rounded-md transition-colors ${currentView === 'select'
+                    ? 'bg-primary-100 text-primary-700 border border-primary-200'
+                    : 'text-gray-600 hover:text-gray-900 hover:bg-gray-100'
+                    }`}
                 >
                   Choose Mode
                 </button>
                 <button
                   onClick={() => setCurrentView('upload')}
-                  className={`px-3 py-1.5 sm:px-4 sm:py-2 text-sm font-medium rounded-md transition-colors ${
-                    currentView === 'upload'
-                      ? 'bg-primary-100 text-primary-700 border border-primary-200'
-                      : 'text-gray-600 hover:text-gray-900 hover:bg-gray-100'
-                  }`}
+                  className={`px-3 py-1.5 sm:px-4 sm:py-2 text-sm font-medium rounded-md transition-colors ${currentView === 'upload'
+                    ? 'bg-primary-100 text-primary-700 border border-primary-200'
+                    : 'text-gray-600 hover:text-gray-900 hover:bg-gray-100'
+                    }`}
                 >
                   Manual Entry
                 </button>
                 <button
                   onClick={() => setCurrentView('list')}
-                  className={`px-3 py-1.5 sm:px-4 sm:py-2 text-sm font-medium rounded-md transition-colors ${
-                    currentView === 'list'
-                      ? 'bg-primary-100 text-primary-700 border border-primary-200'
-                      : 'text-gray-600 hover:text-gray-900 hover:bg-gray-100'
-                  }`}
+                  className={`px-3 py-1.5 sm:px-4 sm:py-2 text-sm font-medium rounded-md transition-colors ${currentView === 'list'
+                    ? 'bg-primary-100 text-primary-700 border border-primary-200'
+                    : 'text-gray-600 hover:text-gray-900 hover:bg-gray-100'
+                    }`}
                 >
                   View Questions
                 </button>
                 <button
                   onClick={openAiAutomation}
-                  className={`px-3 py-1.5 sm:px-4 sm:py-2 text-sm font-medium rounded-md transition-colors ${
-                    currentView === 'ai'
-                      ? 'bg-primary-100 text-primary-700 border border-primary-200'
-                      : 'text-gray-600 hover:text-gray-900 hover:bg-gray-100'
-                  }`}
+                  className={`px-3 py-1.5 sm:px-4 sm:py-2 text-sm font-medium rounded-md transition-colors ${currentView === 'ai'
+                    ? 'bg-primary-100 text-primary-700 border border-primary-200'
+                    : 'text-gray-600 hover:text-gray-900 hover:bg-gray-100'
+                    }`}
                 >
                   AI Automation
                 </button>
@@ -189,9 +240,10 @@ function App() {
                   {loginError && <div className="text-sm text-red-600">{loginError}</div>}
                   <button
                     type="submit"
-                    className="w-full bg-primary-600 text-white py-2 rounded-md hover:bg-primary-700 transition-colors"
+                    disabled={loginLoading}
+                    className="w-full bg-primary-600 text-white py-2 rounded-md hover:bg-primary-700 transition-colors disabled:opacity-50"
                   >
-                    Login
+                    {loginLoading ? 'Logging in...' : 'Login'}
                   </button>
                 </form>
                 <div className="mt-4 text-sm text-gray-500">
@@ -223,6 +275,16 @@ function App() {
                     />
                   </div>
                   <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Email</label>
+                    <input
+                      type="email"
+                      value={regEmail}
+                      onChange={e => setRegEmail(e.target.value)}
+                      className="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-primary-200"
+                      placeholder="Enter your email"
+                    />
+                  </div>
+                  <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1">Password</label>
                     <input
                       type="password"
@@ -245,9 +307,10 @@ function App() {
                   {regError && <div className="text-sm text-red-600">{regError}</div>}
                   <button
                     type="submit"
-                    className="w-full bg-primary-600 text-white py-2 rounded-md hover:bg-primary-700 transition-colors"
+                    disabled={regLoading}
+                    className="w-full bg-primary-600 text-white py-2 rounded-md hover:bg-primary-700 transition-colors disabled:opacity-50"
                   >
-                    Create Account
+                    {regLoading ? 'Creating Account...' : 'Create Account'}
                   </button>
                 </form>
                 <div className="mt-4 text-sm text-gray-500">
@@ -299,7 +362,7 @@ function App() {
           {currentView === 'ai' && (
             <div className="w-full">
               <ReviewApp
-                bootToken={currentToken || buildReviewToken(currentUser || 'admin')}
+                bootToken={currentToken}
                 bootUser={currentUser || 'admin'}
               />
             </div>

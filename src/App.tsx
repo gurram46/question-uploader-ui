@@ -9,7 +9,9 @@ import ReviewApp from './ReviewApp';
 
 type View = 'login' | 'register' | 'select' | 'upload' | 'list' | 'ai';
 
-const API_BASE = process.env.REACT_APP_API_BASE_URL || 'http://localhost:3000';
+const API_BASE =
+  process.env.REACT_APP_API_BASE_URL ||
+  'https://docquest-express-l5mby46qbq-el.a.run.app';
 
 function App() {
   const [currentView, setCurrentView] = useState<View>('login');

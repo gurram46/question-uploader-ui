@@ -75,7 +75,9 @@ interface CommittedQuestion {
   options?: Option[] | string
 }
 
-const API_URL = 'http://localhost:8000'
+const API_URL =
+  process.env.REACT_APP_PYTHON_API_BASE_URL ||
+  'https://docquest-python-l5mby46qbq-el.a.run.app'
 
 type ReviewAppProps = {
   bootToken?: string

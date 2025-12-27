@@ -2,7 +2,9 @@ import axios, { AxiosResponse } from 'axios';
 import { QuestionRow, ApiResponse, QuestionPayload, Difficulty, QuestionType } from '../types';
 
 // ✅ Base URL automatically picked from .env
-const API_BASE_URL = process.env.REACT_APP_API_BASE_URL || 'http://localhost:3001';
+const API_BASE_URL =
+  process.env.REACT_APP_API_BASE_URL ||
+  'https://docquest-express-l5mby46qbq-el.a.run.app';
 
 // Log the base URL for verification (only in development)
 if (process.env.NODE_ENV === 'development') {

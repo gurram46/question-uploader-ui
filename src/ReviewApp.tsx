@@ -1,6 +1,7 @@
 /* eslint-disable no-alert, no-restricted-globals, security/detect-object-injection, @typescript-eslint/no-unused-vars */
 import { useEffect, useRef, useState } from 'react'
 import './ReviewApp.css'
+import { getExpressBase, getPythonBase } from './utils/apiBase'
 
 interface Option {
   letter: string
@@ -75,9 +76,7 @@ interface CommittedQuestion {
   options?: Option[] | string
 }
 
-const API_URL =
-  process.env.REACT_APP_PYTHON_API_BASE_URL ||
-  'https://docquest-python-l5mby46qbq-el.a.run.app'
+const API_URL = getPythonBase()
 
 type ReviewAppProps = {
   bootToken?: string
@@ -91,7 +90,7 @@ function ReviewApp({ bootToken, bootUser }: ReviewAppProps) {
   const [filter, setFilter] = useState<string>('all')
   const [uploading, setUploading] = useState(false)
   const [uploadProgress, setUploadProgress] = useState('')
-  const [expressUrl, setExpressUrl] = useState('http://localhost:3000')
+  const [expressUrl, setExpressUrl] = useState(getExpressBase())
   const [validationResult, setValidationResult] = useState<ValidationResult | null>(null)
   const [showValidation, setShowValidation] = useState(false)
   const [lastValidationQuestions, setLastValidationQuestions] = useState<Question[]>([])

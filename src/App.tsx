@@ -6,12 +6,9 @@ import { useToast } from './hooks/useToast';
 import './App.css';
 import { QuestionFormProvider } from './context/QuestionFormContext';
 import ReviewApp from './ReviewApp';
+import { getApiMode, getExpressBase, getModeLabel, setApiMode } from './utils/apiBase';
 
 type View = 'login' | 'register' | 'select' | 'upload' | 'list' | 'ai';
-
-const API_BASE =
-  process.env.REACT_APP_API_BASE_URL ||
-  'https://docquest-express-l5mby46qbq-el.a.run.app';
 
 function App() {
   const [currentView, setCurrentView] = useState<View>('login');
@@ -30,6 +27,7 @@ function App() {
   const { toasts, removeToast } = useToast();
   console.log("API Base URL:", process.env.REACT_APP_API_BASE_URL);
   console.log("Environment:", process.env.REACT_APP_ENVIRONMENT);
+  const [apiMode, setApiModeState] = useState(() => getApiMode());
 
   // Check if already logged in on mount
   React.useEffect(() => {
@@ -42,6 +40,12 @@ function App() {
     }
   }, []);
 
+  function handleApiModeSelect(mode: 'prod' | 'local') {
+    setApiMode(mode);
+    setApiModeState(mode);
+    window.location.reload();
+  }
+
   async function handleLogin(e: React.FormEvent) {
     e.preventDefault();
     if (!loginUser.trim() || !loginPass.trim()) {
@@ -53,7 +57,7 @@ function App() {
     setLoginError('');
 
     try {
-      const res = await fetch(`${API_BASE}/auth/login`, {
+      const res = await fetch(`${getExpressBase()}/auth/login`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ username: loginUser.trim(), password: loginPass })
@@ -109,7 +113,7 @@ function App() {
     setRegError('');
 
     try {
-      const res = await fetch(`${API_BASE}/auth/register`, {
+      const res = await fetch(`${getExpressBase()}/auth/register`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -149,6 +153,30 @@ function App() {
 
   return (
     <div className="min-h-screen bg-gray-100 dq-dark">
+      {apiMode === null && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 px-4">
+          <div className="w-full max-w-md rounded-lg bg-white p-6 shadow-lg">
+            <h2 className="text-lg font-semibold text-gray-900">Choose API Mode</h2>
+            <p className="mt-2 text-sm text-gray-600">
+              Select which backend to use for this session.
+            </p>
+            <div className="mt-4 flex flex-col gap-3 sm:flex-row">
+              <button
+                onClick={() => handleApiModeSelect('prod')}
+                className="flex-1 rounded-md bg-primary-600 px-4 py-2 text-sm font-medium text-white hover:bg-primary-700"
+              >
+                Production (GCP)
+              </button>
+              <button
+                onClick={() => handleApiModeSelect('local')}
+                className="flex-1 rounded-md border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
+              >
+                Local (localhost)
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
       {/* Navigation */}
       <nav className="bg-white shadow-sm border-b border-gray-200 sticky top-0 z-20">
         <div className="max-w-6xl mx-auto px-4">
@@ -379,7 +407,7 @@ function App() {
             DocQuest SuperAdmin - Internal Database Management System
           </p>
           <p className="text-xs text-gray-400 mt-1">
-            Environment: {process.env.REACT_APP_ENVIRONMENT || 'development'}
+            Environment: {process.env.REACT_APP_ENVIRONMENT || 'development'} • API Mode: {getModeLabel()}
           </p>
         </div>
       </footer>

@@ -43,8 +43,12 @@ interface Draft {
 
 interface BatchSummary {
   batch_id: string
+  job_id?: string
   status: string
-  total_questions: number
+  total_questions?: number
+  total_pages?: number
+  pages_done?: number
+  progress?: number
 }
 
 interface ValidationResult {
@@ -259,6 +263,58 @@ function ReviewApp({ bootToken, bootUser }: ReviewAppProps) {
     if (!res.ok) return
     const data = await res.json()
     setBatches(data)
+  }
+
+  function formatBatchMeta(batch: BatchSummary) {
+    const total = batch.total_questions ?? '?'
+    const progress = typeof batch.progress === 'number' ? `${batch.progress}%` : null
+    const pages = batch.total_pages ? `${batch.pages_done ?? 0}/${batch.total_pages} pages` : null
+    const status = batch.status || 'queued'
+    const parts = [total ? `${total} questions` : null, status]
+    if (progress) parts.push(progress)
+    if (pages) parts.push(pages)
+    return parts.filter(Boolean).join(' - ')
+  }
+
+  async function pollJobAndLoad(batch: BatchSummary) {
+    if (!batch.job_id) {
+      setUiNotice(`Batch ${batch.batch_id} is queued. Please wait for processing to start.`)
+      return
+    }
+    setUiNotice(`Processing batch ${batch.batch_id}...`)
+    while (true) {
+      const pollRes = await fetch(`${API_URL}/draft/jobs/${batch.job_id}`, { headers: authHeaders() })
+      if (!pollRes.ok) {
+        setUiError('Failed to fetch job status.')
+        return
+      }
+      const job = await pollRes.json()
+      setBatches(prev =>
+        prev.map(b =>
+          b.batch_id === batch.batch_id
+            ? {
+                ...b,
+                status: job.status,
+                total_pages: job.total_pages,
+                total_questions: job.total_questions,
+                pages_done: job.pages_done,
+                progress: job.progress,
+                job_id: job.job_id
+              }
+            : b
+        )
+      )
+      if (job.status === 'done') {
+        setUiNotice('')
+        await loadDraft(batch.batch_id, 1, pageSize)
+        return
+      }
+      if (job.status === 'error') {
+        setUiError(`Batch ${batch.batch_id} failed: ${job.error || 'Unknown error'}`)
+        return
+      }
+      await new Promise(r => setTimeout(r, 2000))
+    }
   }
 
   async function loadDraft(batchId: string, page = currentPage, limit = pageSize) {
@@ -1855,11 +1911,15 @@ function ReviewApp({ bootToken, bootUser }: ReviewAppProps) {
                 onClick={() => {
                   setCurrentPage(1)
                   setAllQuestions(null)
-                  loadDraft(b.batch_id, 1, pageSize)
+                  if (b.status === 'done') {
+                    loadDraft(b.batch_id, 1, pageSize)
+                  } else {
+                    pollJobAndLoad(b)
+                  }
                 }}
               >
                 <span className="batch-id">{b.batch_id}</span>
-                <span className="batch-meta">{b.total_questions || '?'} questions - {b.status}</span>
+                <span className="batch-meta">{formatBatchMeta(b)}</span>
               </div>
             ))}
           </aside>

@@ -111,6 +111,7 @@ function ReviewApp({ bootToken, bootUser }: ReviewAppProps) {
   const [bulkSubject, setBulkSubject] = useState('')
   const [bulkChapter, setBulkChapter] = useState('')
   const [bulkTopic, setBulkTopic] = useState('')
+  const [bulkExamType, setBulkExamType] = useState('')
   const [bulkRangeStart, setBulkRangeStart] = useState('')
   const [bulkRangeEnd, setBulkRangeEnd] = useState('')
   const [bulkBusy, setBulkBusy] = useState(false)
@@ -307,6 +308,7 @@ function ReviewApp({ bootToken, bootUser }: ReviewAppProps) {
       if (job.status === 'done') {
         setUiNotice('')
         await loadDraft(batch.batch_id, 1, pageSize)
+        await loadAllQuestions(batch.batch_id)
         return
       }
       if (job.status === 'error') {
@@ -323,6 +325,13 @@ function ReviewApp({ bootToken, bootUser }: ReviewAppProps) {
     if (res.ok) {
       const data = await res.json()
       setDraft(data)
+      if (batchId !== currentBatch) {
+        setValidationFilter('all')
+        setValidationFailedIds(new Set())
+        setValidationValidIds(new Set())
+        setValidationErrors([])
+        setShowValidation(false)
+      }
       setCurrentBatch(batchId)
       setCurrentPage(data.page || page)
       if ((answerKeyMaxQ === '300' || !answerKeyMaxQ) && data.total_questions) {
@@ -384,6 +393,7 @@ function ReviewApp({ bootToken, bootUser }: ReviewAppProps) {
         await loadBatches()
         setCurrentPage(1)
         await loadDraft(batchId, 1, pageSize)
+        await loadAllQuestions(batchId)
         break
       }
       if (job.status === 'error') {
@@ -436,6 +446,59 @@ function ReviewApp({ bootToken, bootUser }: ReviewAppProps) {
     await refreshAllIfLoaded()
     setActionStatus({ state: 'success', message: `Verified ${targets.length} question(s).` })
     console.info('[verify-bulk] done', { mode, count: targets.length, batch: currentBatch })
+  }
+
+  async function deleteBatch(batchId: string) {
+    if (!batchId) return
+    const ok = window.confirm(`Delete batch ${batchId}? This will remove the draft and job.`)
+    if (!ok) return
+    try {
+      const res = await fetch(`${API_URL}/draft/${batchId}`, {
+        method: 'DELETE',
+        headers: authHeaders()
+      })
+      if (!res.ok) {
+        const msg = await res.text()
+        setUiError(msg || 'Failed to delete batch')
+        return
+      }
+      setBatches(prev => prev.filter(b => b.batch_id !== batchId))
+      if (currentBatch === batchId) {
+        setCurrentBatch(null)
+        setDraft(null)
+        setAllQuestions(null)
+      }
+      setUiNotice(`Deleted batch ${batchId}`)
+      setUiError('')
+    } catch (err: any) {
+      setUiError(err?.message || 'Failed to delete batch')
+    }
+  }
+
+  async function dispatchBatch(batch: BatchSummary) {
+    if (!batch.job_id) {
+      setUiError('Cannot start: missing job_id')
+      return
+    }
+    try {
+      setUiNotice(`Starting batch ${batch.batch_id}...`)
+      const res = await fetch(`${API_URL}/draft/jobs/${batch.job_id}/dispatch`, {
+        method: 'POST',
+        headers: authHeaders()
+      })
+      if (!res.ok) {
+        const msg = await res.text()
+        setUiError(msg || 'Failed to start batch')
+        setUiNotice('')
+        return
+      }
+      setUiError('')
+      await loadBatches()
+      pollJobAndLoad({ ...batch, job_id: batch.job_id })
+    } catch (err: any) {
+      setUiError(err?.message || 'Failed to start batch')
+      setUiNotice('')
+    }
   }
 
   async function rejectQuestion(qid: string) {
@@ -680,6 +743,7 @@ function ReviewApp({ bootToken, bootUser }: ReviewAppProps) {
         subjectName: ((q as any).subject_name || '')?.trim().toLowerCase(),
         chapterName: ((q as any).chapter_name || '')?.trim().toLowerCase(),
         topicName: ((q as any).topic_name || '')?.trim().toLowerCase(),
+        examType: bulkExamType.trim().toLowerCase(),
         difficultyLevel: q.difficulty_level,
         difficultyType: (q.difficulty_type || '')?.trim().toLowerCase() === 'unknown' ? null : (q.difficulty_type || '')?.trim().toLowerCase(),
         questionType: ((q as any).questionType || (q as any).question_type || 'single_correct')?.trim().toLowerCase(),
@@ -1330,6 +1394,10 @@ function ReviewApp({ bootToken, bootUser }: ReviewAppProps) {
   async function validateBulk(mode: 'all' | 'selected' | 'range' = 'all') {
     if (!draft?.questions) return
     let sticky = false
+    if (!bulkExamType.trim()) {
+      alert('Select exam type (NEET/JEE/JEE Advanced) before validation.')
+      return
+    }
     const source =
       mode === 'selected' ? getQuestionsForSelected() :
       mode === 'range' ? await getQuestionsForRange() :
@@ -1436,6 +1504,10 @@ function ReviewApp({ bootToken, bootUser }: ReviewAppProps) {
     if (!draft?.questions) return
     let sticky = false
     if (!confirm('Commit verified questions to database?')) return
+    if (!bulkExamType.trim()) {
+      alert('Select exam type (NEET/JEE/JEE Advanced) before commit.')
+      return
+    }
     const source =
       mode === 'selected' ? getQuestionsForSelected() :
       mode === 'range' ? await getQuestionsForRange() :
@@ -1609,7 +1681,7 @@ function ReviewApp({ bootToken, bootUser }: ReviewAppProps) {
     ? questionsForView.filter((q: Question) => validationFailedIds.has(q.question_id))
     : validationFilter === 'valid'
       ? questionsForView.filter((q: Question) => validationValidIds.has(q.question_id))
-      : pageQuestions
+      : questionsForView
   const filteredQuestions = validationFilteredQuestions
     .filter((q: Question) => (validationFilter !== 'all' ? true : (sourcePage ? q.source_page === sourcePage : true)))
     .filter((q: Question) => {
@@ -1912,15 +1984,37 @@ function ReviewApp({ bootToken, bootUser }: ReviewAppProps) {
                   setCurrentPage(1)
                   setAllQuestions(null)
                   if (b.status === 'done') {
-                    loadDraft(b.batch_id, 1, pageSize)
+                    loadDraft(b.batch_id, 1, pageSize).then(() => loadAllQuestions(b.batch_id))
                   } else {
                     pollJobAndLoad(b)
                   }
                 }}
-              >
-                <span className="batch-id">{b.batch_id}</span>
-                <span className="batch-meta">{formatBatchMeta(b)}</span>
-              </div>
+                >
+                  <span className="batch-id">{b.batch_id}</span>
+                  <span className="batch-meta">{formatBatchMeta(b)}</span>
+                  {b.status !== 'done' && (
+                    <button
+                      className="btn small"
+                      style={{ marginLeft: 'auto' }}
+                      onClick={e => {
+                        e.stopPropagation()
+                        dispatchBatch(b)
+                      }}
+                    >
+                      Start
+                    </button>
+                  )}
+                  <button
+                    className="btn small"
+                    style={{ marginLeft: 'auto' }}
+                    onClick={e => {
+                      e.stopPropagation()
+                      deleteBatch(b.batch_id)
+                    }}
+                  >
+                    Delete
+                  </button>
+                </div>
             ))}
           </aside>
 
@@ -2038,6 +2132,12 @@ function ReviewApp({ bootToken, bootUser }: ReviewAppProps) {
                   value={bulkTopic}
                   onChange={e => setBulkTopic(e.target.value)}
                 />
+                <select value={bulkExamType} onChange={e => setBulkExamType(e.target.value)}>
+                  <option value="">Exam type</option>
+                  <option value="neet">NEET</option>
+                  <option value="jee">JEE</option>
+                  <option value="jee advanced">JEE Advanced</option>
+                </select>
                 <button className="btn small" disabled={bulkBusy} onClick={() => applyBulkMetadata('all')}>
                   Apply to all
                 </button>

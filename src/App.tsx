@@ -25,8 +25,6 @@ function App() {
   const [regError, setRegError] = useState('');
   const [regLoading, setRegLoading] = useState(false);
   const { toasts, removeToast } = useToast();
-  console.log("API Base URL:", process.env.REACT_APP_API_BASE_URL);
-  console.log("Environment:", process.env.REACT_APP_ENVIRONMENT);
 
   // Check if already logged in on mount
   React.useEffect(() => {
@@ -72,7 +70,7 @@ function App() {
       setCurrentToken(data.token);
       setCurrentUser(data.user.username);
       setCurrentView('select');
-    } catch (err: any) {
+    } catch (err: unknown) {
       setLoginError('Connection error. Is the server running?');
     }
 
@@ -133,7 +131,7 @@ function App() {
       setCurrentToken(data.token);
       setCurrentUser(data.user.username);
       setCurrentView('select');
-    } catch (err: any) {
+    } catch (err: unknown) {
       setRegError('Connection error. Is the server running?');
     }
 

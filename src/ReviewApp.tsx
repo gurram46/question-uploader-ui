@@ -1,4 +1,4 @@
-/* eslint-disable no-alert, no-restricted-globals, security/detect-object-injection, @typescript-eslint/no-unused-vars */
+/* eslint-disable no-alert, no-restricted-globals, security/detect-object-injection, @typescript-eslint/no-unused-vars, @typescript-eslint/no-explicit-any, import/no-anonymous-default-export */
 import { useEffect, useRef, useState } from 'react'
 import './ReviewApp.css'
 import { getExpressBase, getPythonBase } from './utils/apiBase'

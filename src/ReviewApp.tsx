@@ -29,6 +29,10 @@ interface Question {
   explanation_image?: string
   explanation_images?: string[]
   correct_option_letters?: string | null
+  subject_name?: string
+  chapter_name?: string
+  topic_name?: string
+  exam_type?: string
 }
 
 interface Draft {
@@ -71,6 +75,8 @@ interface CommittedQuestion {
   subject_name?: string
   chapter_name?: string
   topic_name?: string
+  exam_type?: string
+  batch_tag?: string
   difficulty_level?: number
   difficulty_type?: string
   question_type?: string
@@ -87,11 +93,25 @@ type ReviewAppProps = {
   bootUser?: string
 }
 
+type BulkPreset = {
+  name: string
+  subject: string
+  chapter: string
+  topic: string
+  examType: string
+  tag: string
+}
+
+const BULK_META_KEY = 'dq_bulk_meta_v1'
+const BULK_PRESETS_KEY = 'dq_bulk_presets_v1'
+
 function ReviewApp({ bootToken, bootUser }: ReviewAppProps) {
   const [batches, setBatches] = useState<BatchSummary[]>([])
   const [currentBatch, setCurrentBatch] = useState<string | null>(null)
   const [draft, setDraft] = useState<Draft | null>(null)
   const [filter, setFilter] = useState<string>('all')
+  const [filterExamType, setFilterExamType] = useState('')
+  const [filterMissingAssets, setFilterMissingAssets] = useState(false)
   const [uploading, setUploading] = useState(false)
   const [uploadProgress, setUploadProgress] = useState('')
   const [expressUrl, setExpressUrl] = useState(getExpressBase())
@@ -104,6 +124,8 @@ function ReviewApp({ bootToken, bootUser }: ReviewAppProps) {
   const [validationErrors, setValidationErrors] = useState<any[]>([])
   const [committed, setCommitted] = useState<CommittedQuestion[]>([])
   const [committedBatch, setCommittedBatch] = useState('')
+  const [committedFilterExam, setCommittedFilterExam] = useState('')
+  const [committedFilterTag, setCommittedFilterTag] = useState('')
   const [viewMode, setViewMode] = useState<'review' | 'committed'>('review')
   const [committedEditId, setCommittedEditId] = useState<number | null>(null)
   const [committedEdit, setCommittedEdit] = useState<CommittedQuestion | null>(null)
@@ -112,9 +134,12 @@ function ReviewApp({ bootToken, bootUser }: ReviewAppProps) {
   const [bulkChapter, setBulkChapter] = useState('')
   const [bulkTopic, setBulkTopic] = useState('')
   const [bulkExamType, setBulkExamType] = useState('')
+  const [bulkTag, setBulkTag] = useState('')
   const [bulkRangeStart, setBulkRangeStart] = useState('')
   const [bulkRangeEnd, setBulkRangeEnd] = useState('')
   const [bulkBusy, setBulkBusy] = useState(false)
+  const [bulkPresetName, setBulkPresetName] = useState('')
+  const [bulkPresets, setBulkPresets] = useState<BulkPreset[]>([])
   const [committedBulkSubject, setCommittedBulkSubject] = useState('')
   const [committedBulkChapter, setCommittedBulkChapter] = useState('')
   const [committedBulkTopic, setCommittedBulkTopic] = useState('')
@@ -182,6 +207,44 @@ function ReviewApp({ bootToken, bootUser }: ReviewAppProps) {
   }, [])
 
   useEffect(() => {
+    try {
+      const raw = localStorage.getItem(BULK_META_KEY)
+      if (raw) {
+        const parsed = JSON.parse(raw)
+        if (typeof parsed?.subject === 'string') setBulkSubject(parsed.subject)
+        if (typeof parsed?.chapter === 'string') setBulkChapter(parsed.chapter)
+        if (typeof parsed?.topic === 'string') setBulkTopic(parsed.topic)
+        if (typeof parsed?.examType === 'string') setBulkExamType(parsed.examType)
+        if (typeof parsed?.tag === 'string') setBulkTag(parsed.tag)
+      }
+      const presetsRaw = localStorage.getItem(BULK_PRESETS_KEY)
+      if (presetsRaw) {
+        const parsedPresets = JSON.parse(presetsRaw)
+        if (Array.isArray(parsedPresets)) {
+          setBulkPresets(parsedPresets)
+        }
+      }
+    } catch {
+      // ignore storage errors
+    }
+  }, [])
+
+  useEffect(() => {
+    const payload = {
+      subject: bulkSubject,
+      chapter: bulkChapter,
+      topic: bulkTopic,
+      examType: bulkExamType,
+      tag: bulkTag
+    }
+    try {
+      localStorage.setItem(BULK_META_KEY, JSON.stringify(payload))
+    } catch {
+      // ignore storage errors
+    }
+  }, [bulkSubject, bulkChapter, bulkTopic, bulkExamType, bulkTag])
+
+  useEffect(() => {
     if (!allQuestions) return
     if (answerKeyMaxQ && answerKeyMaxQ !== '300') return
     let maxNum = 0
@@ -202,6 +265,49 @@ function ReviewApp({ bootToken, bootUser }: ReviewAppProps) {
 
   function authHeaders(): Record<string, string> {
     return token ? { Authorization: `Bearer ${token}` } : {}
+  }
+
+  function applyPreset(preset: BulkPreset) {
+    setBulkSubject(preset.subject || '')
+    setBulkChapter(preset.chapter || '')
+    setBulkTopic(preset.topic || '')
+    setBulkExamType(preset.examType || '')
+    setBulkTag(preset.tag || '')
+    setUiNotice(`Applied preset: ${preset.name}`)
+  }
+
+  function savePreset() {
+    const name = bulkPresetName.trim()
+    if (!name) {
+      alert('Enter a preset name.')
+      return
+    }
+    const next: BulkPreset = {
+      name,
+      subject: bulkSubject.trim(),
+      chapter: bulkChapter.trim(),
+      topic: bulkTopic.trim(),
+      examType: bulkExamType.trim(),
+      tag: bulkTag.trim()
+    }
+    const updated = [...bulkPresets.filter(p => p.name !== name), next]
+    setBulkPresets(updated)
+    setBulkPresetName('')
+    try {
+      localStorage.setItem(BULK_PRESETS_KEY, JSON.stringify(updated))
+    } catch {
+      // ignore storage errors
+    }
+  }
+
+  function removePreset(name: string) {
+    const updated = bulkPresets.filter(p => p.name !== name)
+    setBulkPresets(updated)
+    try {
+      localStorage.setItem(BULK_PRESETS_KEY, JSON.stringify(updated))
+    } catch {
+      // ignore storage errors
+    }
   }
 
   async function handleLogin(user: string, pass: string) {
@@ -636,7 +742,8 @@ function ReviewApp({ bootToken, bootUser }: ReviewAppProps) {
       verification_state: 'edited',
       subject_name: (bulkSubject || '').trim(),
       chapter_name: (bulkChapter || '').trim(),
-      topic_name: (bulkTopic || '').trim()
+      topic_name: (bulkTopic || '').trim(),
+      exam_type: (bulkExamType || '').trim()
     }
     const res = await fetch(`${API_URL}/draft/${currentBatch}/question`, {
       method: 'POST',
@@ -692,6 +799,29 @@ function ReviewApp({ bootToken, bootUser }: ReviewAppProps) {
     return `images/${currentBatch}/${name}`
   }
 
+  function hasMissingAssets(q: Question) {
+    const assets = draft?.image_assets || {}
+    const candidates: string[] = []
+    const pushAsset = (value?: string | string[]) => {
+      if (!value) return
+      const list = Array.isArray(value) ? value : [value]
+      for (const item of list) {
+        const raw = String(item || '').trim()
+        if (!raw) continue
+        if (raw.startsWith('http') || raw.startsWith('gs://')) continue
+        const name = raw.includes('/') ? raw.split('/').pop() || raw : raw
+        if (name) candidates.push(name)
+      }
+    }
+    pushAsset(q.image_urls || q.image_url)
+    pushAsset(q.explanation_images || q.explanation_image)
+    for (const opt of q.options || []) {
+      pushAsset(opt.image_urls || opt.image_url)
+    }
+    if (candidates.length === 0) return false
+    return candidates.some(name => !assets[name])
+  }
+
   function toImageList(value?: string | string[]) {
     if (Array.isArray(value)) return value.filter(Boolean)
     if (typeof value === 'string' && value) return [value]
@@ -743,7 +873,8 @@ function ReviewApp({ bootToken, bootUser }: ReviewAppProps) {
         subjectName: ((q as any).subject_name || '')?.trim().toLowerCase(),
         chapterName: ((q as any).chapter_name || '')?.trim().toLowerCase(),
         topicName: ((q as any).topic_name || '')?.trim().toLowerCase(),
-        examType: bulkExamType.trim().toLowerCase(),
+        examType: (q.exam_type || bulkExamType).trim().toLowerCase(),
+        batchTag: bulkTag.trim(),
         difficultyLevel: q.difficulty_level,
         difficultyType: (q.difficulty_type || '')?.trim().toLowerCase() === 'unknown' ? null : (q.difficulty_type || '')?.trim().toLowerCase(),
         questionType: ((q as any).questionType || (q as any).question_type || 'single_correct')?.trim().toLowerCase(),
@@ -845,9 +976,10 @@ function ReviewApp({ bootToken, bootUser }: ReviewAppProps) {
     const subject = bulkSubject.trim()
     const chapter = bulkChapter.trim()
     const topic = bulkTopic.trim()
+    const examType = bulkExamType.trim()
 
-    if (!subject && !chapter && !topic) {
-      alert('Enter subject, chapter, or topic to apply.')
+    if (!subject && !chapter && !topic && !examType) {
+      alert('Enter subject, chapter, topic, or exam type to apply.')
       return
     }
 
@@ -858,6 +990,7 @@ function ReviewApp({ bootToken, bootUser }: ReviewAppProps) {
     if (subject) patch.subject_name = subject
     if (chapter) patch.chapter_name = chapter
     if (topic) patch.topic_name = topic
+    if (examType) patch.exam_type = examType
 
     setBulkBusy(true)
     const body: any = { mode, patch }
@@ -1500,10 +1633,52 @@ function ReviewApp({ bootToken, bootUser }: ReviewAppProps) {
     }
   }
 
+  function summarizeCommit(questions: Question[]) {
+    const verified = questions.filter(q => q.verification_state === 'verified')
+    const missingSubject = verified.filter(q => !String((q.subject_name || '')).trim()).length
+    const missingChapter = verified.filter(q => !String((q.chapter_name || '')).trim()).length
+    const missingTopic = verified.filter(q => !String((q.topic_name || '')).trim()).length
+    const missingExam = verified.filter(q => !String((q.exam_type || bulkExamType || '')).trim()).length
+    const missingDifficulty = verified.filter(q => !q.difficulty_level).length
+    const missingType = verified.filter(q => !String((q.questionType || q.question_type || '')).trim()).length
+    const missingOptions = verified.filter(q => !(q.options || []).some(o => o.text && String(o.text).trim())).length
+    const missingCorrect = verified.filter(q => {
+      const hasCorrect = (q.options || []).some(o => o.is_correct)
+      if (hasCorrect) return false
+      const raw = q.correct_option_letters ? String(q.correct_option_letters).trim() : ''
+      return !raw
+    }).length
+    return {
+      verifiedCount: verified.length,
+      missingSubject,
+      missingChapter,
+      missingTopic,
+      missingExam,
+      missingDifficulty,
+      missingType,
+      missingOptions,
+      missingCorrect
+    }
+  }
+
+  function commitSummaryText(summary: ReturnType<typeof summarizeCommit>) {
+    const parts = [
+      `Verified: ${summary.verifiedCount}`,
+      `Missing subject: ${summary.missingSubject}`,
+      `Missing chapter: ${summary.missingChapter}`,
+      `Missing topic: ${summary.missingTopic}`,
+      `Missing exam: ${summary.missingExam}`,
+      `Missing difficulty: ${summary.missingDifficulty}`,
+      `Missing type: ${summary.missingType}`,
+      `Missing options: ${summary.missingOptions}`,
+      `Missing correct: ${summary.missingCorrect}`
+    ]
+    return parts.join('\n')
+  }
+
   async function commitBulk(mode: 'all' | 'selected' | 'range' = 'all') {
     if (!draft?.questions) return
     let sticky = false
-    if (!confirm('Commit verified questions to database?')) return
     if (!bulkExamType.trim()) {
       alert('Select exam type (NEET/JEE/JEE Advanced) before commit.')
       return
@@ -1512,6 +1687,24 @@ function ReviewApp({ bootToken, bootUser }: ReviewAppProps) {
       mode === 'selected' ? getQuestionsForSelected() :
       mode === 'range' ? await getQuestionsForRange() :
       await ensureAllQuestions()
+    const summary = summarizeCommit(source)
+    if (summary.verifiedCount === 0) {
+      alert('No verified questions to commit.')
+      return
+    }
+    if (
+      summary.missingSubject ||
+      summary.missingChapter ||
+      summary.missingTopic ||
+      summary.missingExam ||
+      summary.missingDifficulty ||
+      summary.missingType ||
+      summary.missingOptions
+    ) {
+      alert(`Fix missing data before commit:\n${commitSummaryText(summary)}`)
+      return
+    }
+    if (!confirm(`Commit verified questions to database?\n\n${commitSummaryText(summary)}`)) return
     const payload = buildBulkPayload(source)
     if (!payload.length) {
       alert('No verified questions to commit')
@@ -1647,17 +1840,19 @@ function ReviewApp({ bootToken, bootUser }: ReviewAppProps) {
   }
 
   function downloadCommittedCsv() {
-    if (!committed.length) {
+    if (!committedForView.length) {
       alert('No committed questions to export.')
       return
     }
-    const header = ['question_id', 'question_text', 'subject', 'chapter', 'topic', 'difficulty_level', 'difficulty_type', 'question_type']
-    const rows = committed.map(q => [
+    const header = ['question_id', 'question_text', 'subject', 'chapter', 'topic', 'exam_type', 'batch_tag', 'difficulty_level', 'difficulty_type', 'question_type']
+    const rows = committedForView.map(q => [
       q.id ?? '',
       (q.question_text || '').replace(/\n/g, ' ').trim(),
       q.subject_name || '',
       q.chapter_name || '',
       q.topic_name || '',
+      q.exam_type || '',
+      q.batch_tag || '',
       q.difficulty_level ?? '',
       q.difficulty_type || '',
       q.question_type || ''
@@ -1690,6 +1885,11 @@ function ReviewApp({ bootToken, bootUser }: ReviewAppProps) {
       if (filter === 'pending') return q.verification_state !== 'verified' && q.verification_state !== 'rejected'
       return true
     })
+    .filter((q: Question) => {
+      if (!filterExamType) return true
+      return String(q.exam_type || '').trim().toLowerCase() === filterExamType.toLowerCase()
+    })
+    .filter((q: Question) => (!filterMissingAssets ? true : hasMissingAssets(q)))
     .sort((a: Question, b: Question) => (a.source_page || 0) - (b.source_page || 0))
 
   const stats = {
@@ -1700,6 +1900,15 @@ function ReviewApp({ bootToken, bootUser }: ReviewAppProps) {
   const duplicateCount = validationErrors.filter(e => e?.reason === 'DUPLICATE_IN_DB').length
   const failedCount = validationFailedIds.size
   const selectedCount = selectedIds.size
+  const committedForView = committed.filter(q => {
+    if (committedFilterExam && String(q.exam_type || '').toLowerCase() !== committedFilterExam.toLowerCase()) {
+      return false
+    }
+    if (committedFilterTag && !(String(q.batch_tag || '').toLowerCase().includes(committedFilterTag.toLowerCase()))) {
+      return false
+    }
+    return true
+  })
   const tourSteps = getTourSteps()
   const tourTotal = tourSteps.length
   const activeTour = tourOpen && tourSteps[tourStep]
@@ -1910,6 +2119,18 @@ function ReviewApp({ bootToken, bootUser }: ReviewAppProps) {
                 </option>
               ))}
             </select>
+            <select value={committedFilterExam} onChange={e => setCommittedFilterExam(e.target.value)}>
+              <option value="">All exams</option>
+              <option value="neet">NEET</option>
+              <option value="jee">JEE</option>
+              <option value="jee advanced">JEE Advanced</option>
+            </select>
+            <input
+              type="text"
+              placeholder="Batch tag filter"
+              value={committedFilterTag}
+              onChange={e => setCommittedFilterTag(e.target.value)}
+            />
             <button className="btn small" onClick={downloadCommittedCsv}>
               Download CSV
             </button>
@@ -1942,9 +2163,9 @@ function ReviewApp({ bootToken, bootUser }: ReviewAppProps) {
               </button>
             </div>
           </div>
-          {committed.length === 0 && <div style={{ color: '#888' }}>No committed questions found.</div>}
+          {committedForView.length === 0 && <div style={{ color: '#888' }}>No committed questions found.</div>}
           <div className="committed-list">
-            {committed.map((q, i) => (
+            {committedForView.map((q, i) => (
               <CommittedQuestionCard
                 key={q.id || i}
                 question={q}
@@ -2137,12 +2358,39 @@ function ReviewApp({ bootToken, bootUser }: ReviewAppProps) {
                   <option value="jee">JEE</option>
                   <option value="jee advanced">JEE Advanced</option>
                 </select>
+                <input
+                  type="text"
+                  placeholder="Batch tag"
+                  value={bulkTag}
+                  onChange={e => setBulkTag(e.target.value)}
+                />
                 <button className="btn small" disabled={bulkBusy} onClick={() => applyBulkMetadata('all')}>
                   Apply to all
                 </button>
                 <button className="btn small" disabled={bulkBusy} onClick={() => applyBulkMetadata('missing')}>
                   Apply to missing
                 </button>
+              </div>
+              <div className="bulk-row">
+                <input
+                  type="text"
+                  placeholder="Preset name"
+                  value={bulkPresetName}
+                  onChange={e => setBulkPresetName(e.target.value)}
+                />
+                <button className="btn small" disabled={bulkBusy} onClick={savePreset}>
+                  Save preset
+                </button>
+                {bulkPresets.map(preset => (
+                  <div key={preset.name} style={{ display: 'inline-flex', gap: '6px' }}>
+                    <button className="btn small" onClick={() => applyPreset(preset)}>
+                      {preset.name}
+                    </button>
+                    <button className="btn small" onClick={() => removePreset(preset.name)}>
+                      ×
+                    </button>
+                  </div>
+                ))}
               </div>
               <div className="bulk-row">
                 <input
@@ -2324,6 +2572,20 @@ function ReviewApp({ bootToken, bootUser }: ReviewAppProps) {
                   {f.charAt(0).toUpperCase() + f.slice(1)}
                 </button>
               ))}
+              <select value={filterExamType} onChange={e => setFilterExamType(e.target.value)}>
+                <option value="">All exams</option>
+                <option value="neet">NEET</option>
+                <option value="jee">JEE</option>
+                <option value="jee advanced">JEE Advanced</option>
+              </select>
+              <label style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
+                <input
+                  type="checkbox"
+                  checked={filterMissingAssets}
+                  onChange={e => setFilterMissingAssets(e.target.checked)}
+                />
+                Missing assets
+              </label>
             </div>
             <div className="pagination" data-tour="pagination">
               <button

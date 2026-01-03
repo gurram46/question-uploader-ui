@@ -1885,7 +1885,6 @@ function ReviewApp({ bootToken, bootUser }: ReviewAppProps) {
           <span className="stat verified">{stats.verified} Verified</span>
           <span className="stat pending">{stats.pending} Pending</span>
           <span style={{ marginLeft: '16px', color: '#a1a1aa' }}>User: {username}</span>
-          <button onClick={handleLogout} style={{ marginLeft: '8px', padding: '6px 12px' }}>Logout</button>
         </div>
       </header>
 

@@ -23,6 +23,7 @@ interface Question {
   verification_state: string
   source_page: number
   questionType?: string
+  question_type?: string
   image_url?: string
   image_urls?: string[]
   explanation?: string

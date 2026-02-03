@@ -5,6 +5,7 @@ import ToastContainer from './components/ToastContainer';
 import { useToast } from './hooks/useToast';
 import './App.css';
 import { QuestionFormProvider } from './context/QuestionFormContext';
+import ReviewApp from './ReviewApp';
 
 type View = 'login' | 'select' | 'upload' | 'list' | 'ai';
 
@@ -16,7 +17,6 @@ function App() {
   const { toasts, removeToast } = useToast();
   console.log("API Base URL:", process.env.REACT_APP_API_BASE_URL);
   console.log("Environment:", process.env.REACT_APP_ENVIRONMENT);
-  const aiUrl = process.env.REACT_APP_AI_AUTOMATION_URL || 'http://localhost:5173';
 
   function handleLogin(e: React.FormEvent) {
     e.preventDefault();
@@ -172,24 +172,7 @@ function App() {
           )}
           {currentView === 'upload' && <QuestionUploadForm />}
           {currentView === 'list' && <QuestionsList />}
-          {currentView === 'ai' && (
-            <div className="max-w-6xl mx-auto px-4">
-              <div className="flex items-center justify-between mb-4">
-                <h2 className="text-xl font-semibold text-gray-900">AI Automation Review</h2>
-                <a
-                  href={aiUrl}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="text-sm text-primary-700 hover:text-primary-900"
-                >
-                  Open in new tab
-                </a>
-              </div>
-              <div className="ai-frame-wrapper">
-                <iframe title="AI Automation" src={aiUrl} className="ai-frame" />
-              </div>
-            </div>
-          )}
+          {currentView === 'ai' && <ReviewApp showTitle={false} />}
         </main>
       </QuestionFormProvider>
 

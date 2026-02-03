@@ -39,7 +39,6 @@ function App() {
   return (
     <div className={`min-h-screen app-root ${isAiView ? 'ai-mode' : 'bg-gray-100'}`}>
       {/* Navigation */}
-      {!isAiView && (
       <nav className="bg-white shadow-sm border-b border-gray-200 sticky top-0 z-20">
         <div className="max-w-6xl mx-auto px-4">
           <div className="flex flex-col gap-2 sm:flex-row sm:justify-between sm:items-center sm:h-16 py-2">
@@ -101,7 +100,6 @@ function App() {
           </div>
         </div>
       </nav>
-      )}
 
       {/* Main Content */}
       <QuestionFormProvider>
@@ -180,7 +178,6 @@ function App() {
       </QuestionFormProvider>
 
       {/* Footer */}
-      {!isAiView && (
       <footer className="bg-white border-t border-gray-200 py-6 mt-12">
         <div className="max-w-6xl mx-auto px-4 text-center">
           <p className="text-sm text-gray-500">
@@ -191,7 +188,6 @@ function App() {
           </p>
         </div>
       </footer>
-      )}
 
       {/* Toast Notifications */}
       <ToastContainer toasts={toasts} onRemove={removeToast} />

@@ -54,6 +54,11 @@
   margin: 0;
   width: 100%;
 }
+
+.app-root.ai-mode nav,
+.app-root.ai-mode footer {
+  display: none;
+}
   .no-scrollbar {
     -ms-overflow-style: none; /* IE and Edge */
     scrollbar-width: none; /* Firefox */

@@ -82,7 +82,7 @@ function App() {
                 <button
                   onClick={() => setCurrentView('ai')}
                   className={`px-3 py-1.5 sm:px-4 sm:py-2 text-sm font-medium rounded-md transition-colors ${
-                    currentView === 'ai'
+                    isAiView
                       ? 'bg-primary-100 text-primary-700 border border-primary-200'
                       : 'text-gray-600 hover:text-gray-900 hover:bg-gray-100'
                   }`}

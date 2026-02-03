@@ -173,7 +173,7 @@ function App() {
           )}
           {currentView === 'upload' && <QuestionUploadForm />}
           {currentView === 'list' && <QuestionsList />}
-          {currentView === 'ai' && <ReviewApp showTitle={false} />}
+          {currentView === 'ai' && <ReviewApp showTitle={false} onLogout={handleLogout} />}
         </main>
       </QuestionFormProvider>
 

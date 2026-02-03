@@ -99,6 +99,7 @@ type ReviewAppProps = {
   bootToken?: string
   bootUser?: string
   showTitle?: boolean
+  onLogout?: () => void
 }
 
 type BulkPreset = {
@@ -113,7 +114,7 @@ type BulkPreset = {
 const BULK_META_KEY = 'dq_bulk_meta_v1'
 const BULK_PRESETS_KEY = 'dq_bulk_presets_v1'
 
-function ReviewApp({ bootToken, bootUser, showTitle = true }: ReviewAppProps) {
+function ReviewApp({ bootToken, bootUser, showTitle = true, onLogout }: ReviewAppProps) {
   const [batches, setBatches] = useState<BatchSummary[]>([])
   const [currentBatch, setCurrentBatch] = useState<string | null>(null)
   const [draft, setDraft] = useState<Draft | null>(null)
@@ -2238,6 +2239,11 @@ function ReviewApp({ bootToken, bootUser, showTitle = true }: ReviewAppProps) {
             <span className="stat verified">{stats.verified} Verified</span>
             <span className="stat pending">{stats.pending} Pending</span>
             <span className="user-pill">User: {username}</span>
+            {onLogout && (
+              <button className="btn logout" onClick={onLogout}>
+                Logout
+              </button>
+            )}
           </div>
         </div>
       </header>

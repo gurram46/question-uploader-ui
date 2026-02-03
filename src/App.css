@@ -45,6 +45,39 @@
   border: 0;
 }
 
+/* Global dark theme */
+body {
+  background: #0f0f1a;
+  color: #e5e7eb;
+}
+
+.bg-white {
+  background-color: #0c0f18 !important;
+}
+
+.text-gray-900 {
+  color: #f8fafc !important;
+}
+
+.text-gray-700,
+.text-gray-600,
+.text-gray-500,
+.text-gray-400 {
+  color: #cbd5f5 !important;
+}
+
+.border-gray-200 {
+  border-color: #1f2430 !important;
+}
+
+.bg-gray-100 {
+  background-color: #0f0f1a !important;
+}
+
+.shadow-sm {
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.25) !important;
+}
+
 .app-root.ai-mode {
   background: #0f0f1a;
 }

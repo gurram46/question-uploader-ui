@@ -1,5 +1,4 @@
 import React, { useState } from 'react';
-import React, { useState } from 'react';
 import QuestionUploadForm from './components/QuestionUploadForm';
 import QuestionsList from './components/QuestionsList';
 import ToastContainer from './components/ToastContainer';
@@ -36,12 +35,8 @@ function App() {
     setCurrentView('login');
   }
 
-  const rootClass = currentView === 'ai'
-    ? 'min-h-screen bg-gray-100 app-root ai-mode'
-    : 'min-h-screen bg-gray-100 app-root';
-
   return (
-    <div className={rootClass}>
+    <div className="min-h-screen bg-gray-100">
       {/* Navigation */}
       <nav className="bg-white shadow-sm border-b border-gray-200 sticky top-0 z-20">
         <div className="max-w-6xl mx-auto px-4">

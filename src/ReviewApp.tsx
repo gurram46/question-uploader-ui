@@ -152,9 +152,17 @@ function ReviewApp({ bootToken, bootUser, showTitle = true }: ReviewAppProps) {
   const [committedBulkChapter, setCommittedBulkChapter] = useState('')
   const [committedBulkTopic, setCommittedBulkTopic] = useState('')
   const [committedBulkBusy, setCommittedBulkBusy] = useState(false)
+  const [bulkAnswerKey, setBulkAnswerKey] = useState('')
   const [bulkLevel, setBulkLevel] = useState('')
   const [bulkDifficultyType, setBulkDifficultyType] = useState('')
   const [bulkQuestionType, setBulkQuestionType] = useState('single_correct')
+  const [bulkAnswerPage, setBulkAnswerPage] = useState('')
+  const [answerKeyPairs, setAnswerKeyPairs] = useState<{ number: number; answer: string }[]>([])
+  const [answerKeyStatus, setAnswerKeyStatus] = useState('')
+  const [answerKeyMaxPages, setAnswerKeyMaxPages] = useState('20')
+  const [answerKeyMaxQ, setAnswerKeyMaxQ] = useState('1200')
+  const [answerKeyStartPage, setAnswerKeyStartPage] = useState('1')
+  const [answerKeyOcrDpi, setAnswerKeyOcrDpi] = useState('300')
   const [uiError, setUiError] = useState('')
   const [uiNotice, setUiNotice] = useState('')
   const [actionStatus, setActionStatus] = useState<{ state: 'idle' | 'working' | 'success' | 'error', message: string }>({ state: 'idle', message: '' })
@@ -243,6 +251,17 @@ function ReviewApp({ bootToken, bootUser, showTitle = true }: ReviewAppProps) {
       // ignore storage errors
     }
   }, [bulkSubject, bulkChapter, bulkTopic, bulkExamType, bulkTag])
+
+  useEffect(() => {
+    if (!allQuestions) return
+    if (answerKeyMaxQ && answerKeyMaxQ !== '1200') return
+    let maxNum = 0
+    for (const q of allQuestions) {
+      const num = Number((q as any).questionNumber || (q as any).question_number)
+      if (Number.isFinite(num) && num > maxNum) maxNum = num
+    }
+    if (maxNum > 0) setAnswerKeyMaxQ(String(maxNum))
+  }, [allQuestions, answerKeyMaxQ])
 
   useEffect(() => {
     const key = 'dq_review_tour_done'
@@ -442,6 +461,9 @@ function ReviewApp({ bootToken, bootUser, showTitle = true }: ReviewAppProps) {
       }
       setCurrentBatch(batchId)
       setCurrentPage(data.page || page)
+      if ((answerKeyMaxQ === '1200' || !answerKeyMaxQ) && data.total_questions) {
+        setAnswerKeyMaxQ(String(data.total_questions))
+      }
     }
   }
 
@@ -1061,6 +1083,237 @@ function ReviewApp({ bootToken, bootUser, showTitle = true }: ReviewAppProps) {
     await refreshAllIfLoaded()
     if (result?.updated !== undefined) {
       setUiNotice(`Updated ${result.updated} question(s).`)
+    }
+  }
+
+  function parseAnswerKey(text: string): Record<number, string> {
+    const out: Record<number, string> = {}
+    const lines = text.split(/\r?\n/).map(l => l.trim()).filter(Boolean)
+
+    const push = (num: number, ans: string) => {
+      if (!Number.isFinite(num) || !ans) return
+      if (out[num] !== undefined) return
+      out[num] = ans.toUpperCase()
+    }
+
+    for (const line of lines) {
+      const col = line.match(/^\s*([A-Da-d])\s*[:\-]?\s*(.+)$/)
+      if (col) {
+        const ans = col[1].toUpperCase()
+        const nums = (col[2].match(/\d+/g) || []).map(n => Number(n)).filter(n => Number.isFinite(n))
+        for (const n of nums) push(n, ans)
+        continue
+      }
+      const tokens = line.match(/[A-Da-d]|\d{1,4}/g) || []
+      if (tokens.length < 2) continue
+      const types = tokens.map(t => (/[A-Da-d]/.test(t) ? 'L' : 'N'))
+      if (types.every((t, i) => i === types.length - 1 || t !== types[i + 1])) {
+        for (let i = 0; i < tokens.length - 1; i += 2) {
+          if (types[i] === 'N' && types[i + 1] === 'L') {
+            push(Number(tokens[i]), tokens[i + 1])
+          }
+        }
+        continue
+      }
+      const firstL = types.indexOf('L')
+      if (firstL > 0 && types.slice(0, firstL).every(t => t === 'N') && types.slice(firstL).every(t => t === 'L')) {
+        const nums = tokens.slice(0, firstL).map(n => Number(n))
+        const letters = tokens.slice(firstL)
+        if (nums.length === letters.length) {
+          nums.forEach((n, i) => push(n, letters[i]))
+        }
+      }
+    }
+
+    const cleaned = text.replace(/\n/g, ' ').trim()
+    if (!cleaned) return out
+
+    const letterRegex = /(\d+)\s*[\.\-:)\]]*\s*([A-Da-d])/g
+    let match: RegExpExecArray | null
+    while ((match = letterRegex.exec(cleaned)) !== null) {
+      push(Number(match[1]), match[2])
+    }
+
+    if (Object.keys(out).length === 0) {
+      const numericRegex = /(\d+)\s*[\.\-:)\]]+\s*([1-4])/g
+      while ((match = numericRegex.exec(cleaned)) !== null) {
+        const mapped = match[2] === '1' ? 'A' : match[2] === '2' ? 'B' : match[2] === '3' ? 'C' : 'D'
+        push(Number(match[1]), mapped)
+      }
+    }
+    return out
+  }
+
+  function applyAnswerToOptions(options: Option[], answer: string): Option[] {
+    if (!options || options.length === 0) return options
+    const letters = options.map(o => String(o.letter).toUpperCase())
+    const numeric = letters.length > 0 && letters.every(l => ['1', '2', '3', '4'].includes(l))
+    const parts = answer
+      .split(',')
+      .map(s => s.trim().toUpperCase())
+      .filter(Boolean)
+    const mapped = new Set<string>()
+    const mapToNum: Record<string, string> = { A: '1', B: '2', C: '3', D: '4' }
+    for (const p of parts) {
+      mapped.add(p)
+      if (numeric && mapToNum[p]) {
+        mapped.add(mapToNum[p])
+      }
+    }
+    return options.map(o => ({
+      ...o,
+      is_correct: mapped.has(String(o.letter).toUpperCase())
+    }))
+  }
+
+  async function applyBulkAnswers(mode: 'all' | 'missing' | 'range') {
+    if (!draft?.questions || !currentBatch) return
+    const key = parseAnswerKey(bulkAnswerKey)
+    const single = bulkAnswerKey.trim().toUpperCase()
+    const singleMapped = single === '1' ? 'A' : single === '2' ? 'B' : single === '3' ? 'C' : single === '4' ? 'D' : single
+    const hasSingle = ['A', 'B', 'C', 'D'].includes(singleMapped)
+    if (!Object.keys(key).length && !hasSingle) {
+      alert('Paste a valid answer key like: 1.A 2.B 3.C or a single letter like A')
+      return
+    }
+
+    const start = Number(bulkRangeStart)
+    const end = Number(bulkRangeEnd)
+    const hasRange = Number.isFinite(start) && Number.isFinite(end) && start > 0 && end >= start
+
+    let targets: Question[] = []
+    if (mode === 'range') {
+      targets = hasRange ? await getQuestionsForRange() : []
+    } else {
+      targets = await ensureAllQuestions()
+    }
+
+    setUiError('')
+    setUiNotice('')
+    setBulkBusy(true)
+    const updates: any[] = []
+    for (const q of targets) {
+      const qnum = Number((q as any).questionNumber || (q as any).question_number)
+      if (!Number.isFinite(qnum) && !hasSingle) continue
+      const answer = hasSingle ? singleMapped : key[qnum]
+      if (!answer) continue
+      if (mode === 'missing' && q.correct_option_letters) continue
+      const updatedOptions = applyAnswerToOptions(q.options || [], answer)
+      updates.push({
+        question_id: q.question_id,
+        patch: { correct_option_letters: answer, options: updatedOptions }
+      })
+    }
+    if (!updates.length) {
+      setBulkBusy(false)
+      setUiError('No answers applied. Check question numbers and key format.')
+      return
+    }
+    const result = await bulkUpdateRequest({ updates })
+    setBulkBusy(false)
+    await loadDraft(currentBatch)
+    await refreshAllIfLoaded()
+    if (!result) return
+    setUiNotice(`Applied ${result.updated} answers.`)
+  }
+
+  async function uploadAnswerKeyFile(file: File) {
+    if (!file) return
+    if (!currentBatch) return
+    setAnswerKeyStatus('Parsing answer key...')
+    setAnswerKeyPairs([])
+    const form = new FormData()
+    form.append('file', file)
+    const maxPages = Math.max(1, Math.min(20, Number(answerKeyMaxPages) || 6))
+    const maxQ = Math.max(1, Number(answerKeyMaxQ) || 1200)
+    const startPage = Math.max(1, Number(answerKeyStartPage) || 1)
+    const ocrDpi = Math.max(150, Math.min(450, Number(answerKeyOcrDpi) || 300))
+    const res = await fetch(`${API_URL}/draft/answer-key/parse?max_pages=${maxPages}&start_page=${startPage}&min_q=1&max_q=${maxQ}&ocr_dpi=${ocrDpi}`, {
+      method: 'POST',
+      headers: authHeaders(),
+      body: form
+    })
+    if (!res.ok) {
+      const msg = await res.text()
+      setAnswerKeyStatus(msg || 'Failed to parse answer key')
+      return
+    }
+    const data = await res.json()
+    const pairs = Array.isArray(data.pairs) ? data.pairs : []
+    setAnswerKeyPairs(pairs)
+    if (pairs.length > 0) {
+      const keyText = pairs.map((p: any) => `${p.number}.${p.answer}`).join(' ')
+      setBulkAnswerKey(keyText)
+      setAnswerKeyStatus(`Parsed ${pairs.length} answers.`)
+    } else {
+      setAnswerKeyStatus('No answers parsed.')
+    }
+  }
+
+  async function applyAnswersToPage() {
+    if (!draft?.questions || !currentBatch) return
+    const pageNum = Number(bulkAnswerPage)
+    if (!Number.isFinite(pageNum) || pageNum <= 0) {
+      alert('Enter a valid page number')
+      return
+    }
+    const key = parseAnswerKey(bulkAnswerKey)
+    const single = bulkAnswerKey.trim().toUpperCase()
+    const singleMapped = single === '1' ? 'A' : single === '2' ? 'B' : single === '3' ? 'C' : single === '4' ? 'D' : single
+    const hasSingle = ['A', 'B', 'C', 'D'].includes(singleMapped)
+    if (!Object.keys(key).length && !hasSingle) {
+      alert('Paste a valid answer key like: 1.A 2.B 3.C or a single letter like A')
+      return
+    }
+
+    setUiError('')
+    setUiNotice('')
+    setBulkBusy(true)
+    let applied = 0
+    for (const q of draft.questions) {
+      if ((q.source_page || 0) !== pageNum) continue
+      const qnum = Number((q as any).questionNumber || (q as any).question_number)
+      if (!Number.isFinite(qnum) && !hasSingle) continue
+      const answer = hasSingle ? singleMapped : key[qnum]
+      if (answer) {
+        const updatedOptions = applyAnswerToOptions(q.options || [], answer)
+        const ok = await updateQuestion(q.question_id, { correct_option_letters: answer, options: updatedOptions } as any, false)
+        if (ok) applied += 1
+      }
+    }
+    setBulkBusy(false)
+    await loadDraft(currentBatch)
+    if (applied === 0) {
+      setUiError(`No answers applied for page ${pageNum}.`)
+    } else {
+      setUiNotice(`Applied ${applied} answers on page ${pageNum}.`)
+    }
+  }
+
+  async function applyAnswerToQuestion(q: Question) {
+    if (!currentBatch) return
+    const key = parseAnswerKey(bulkAnswerKey)
+    if (!Object.keys(key).length) {
+      alert('Paste a valid answer key like: 1.A 2.B 3.C')
+      return
+    }
+    const qnum = Number((q as any).questionNumber || (q as any).question_number)
+    if (!Number.isFinite(qnum)) {
+      alert('Question number not found for this question')
+      return
+    }
+    const answer = key[qnum]
+    if (!answer) {
+      alert('No answer found for this question number in the key')
+      return
+    }
+    setUiError('')
+    setUiNotice('')
+    const updatedOptions = applyAnswerToOptions(q.options || [], answer)
+    const ok = await updateQuestion(q.question_id, { correct_option_letters: answer, options: updatedOptions } as any, false)
+    await loadDraft(currentBatch)
+    if (ok) {
+      setUiNotice(`Applied answer ${answer} to question ${qnum}.`)
     }
   }
 
@@ -1805,6 +2058,7 @@ function ReviewApp({ bootToken, bootUser, showTitle = true }: ReviewAppProps) {
       { selector: '[data-tour="pagination"]', title: 'Pages', body: 'Use the page selector to review one source_page at a time.' },
       { selector: '[data-tour="actions"]', title: 'Validate + Commit', body: 'Validate checks required fields. Commit sends verified questions to DB.' },
       { selector: '[data-tour="bulk-meta"]', title: 'Bulk Metadata', body: 'Apply subject/chapter/topic, difficulty, and question type in bulk.' },
+      { selector: '[data-tour="answer-key"]', title: 'Answer Key', body: 'Paste or upload keys, then apply to page or range.' },
       { selector: '[data-tour="filters"]', title: 'Filters', body: 'Filter by pending/verified/failed after validation.' }
     ]
   }
@@ -2366,6 +2620,92 @@ function ReviewApp({ bootToken, bootUser, showTitle = true }: ReviewAppProps) {
                   Clear selection
                 </button>
               </div>
+              <div className="bulk-row" data-tour="answer-key">
+                <label className="upload-label answer-upload">
+                  <span>Answer Upload</span>
+                  <input
+                    type="file"
+                    accept=".png,.jpg,.jpeg,.pdf"
+                    onChange={e => {
+                      const f = e.target.files?.[0]
+                      if (f) uploadAnswerKeyFile(f)
+                    }}
+                  />
+                </label>
+                <input
+                  type="number"
+                  min="1"
+                  max="20"
+                  placeholder="Key pages"
+                  value={answerKeyMaxPages}
+                  onChange={e => setAnswerKeyMaxPages(e.target.value)}
+                />
+                <input
+                  type="number"
+                  min="1"
+                  placeholder="Start page"
+                  value={answerKeyStartPage}
+                  onChange={e => setAnswerKeyStartPage(e.target.value)}
+                />
+                <input
+                  type="number"
+                  min="1"
+                  placeholder="Max Q"
+                  value={answerKeyMaxQ}
+                  onChange={e => setAnswerKeyMaxQ(e.target.value)}
+                />
+                <input
+                  type="number"
+                  min="150"
+                  max="450"
+                  placeholder="OCR DPI"
+                  value={answerKeyOcrDpi}
+                  onChange={e => setAnswerKeyOcrDpi(e.target.value)}
+                />
+                <input
+                  type="text"
+                  placeholder="Answer key (1.A 2.B 3.C)"
+                  value={bulkAnswerKey}
+                  onChange={e => setBulkAnswerKey(e.target.value)}
+                />
+                <input
+                  type="number"
+                  placeholder="Page"
+                  value={bulkAnswerPage}
+                  onChange={e => setBulkAnswerPage(e.target.value)}
+                />
+                <button className="btn small" disabled={bulkBusy} onClick={() => applyBulkAnswers('all')} title="Apply answers to every question.">
+                  Apply answers to all
+                </button>
+                <button className="btn small" disabled={bulkBusy} onClick={() => applyBulkAnswers('missing')} title="Apply answers only to questions with no answers.">
+                  Apply answers to missing
+                </button>
+                <button className="btn small" disabled={bulkBusy} onClick={() => applyBulkAnswers('range')} title="Apply answers to the Question # range.">
+                  Apply answers to range
+                </button>
+                <button className="btn small" disabled={bulkBusy} onClick={applyAnswersToPage} title="Apply answers only to the selected page.">
+                  Apply answers to page
+                </button>
+              </div>
+              {(answerKeyStatus || answerKeyPairs.length > 0) && (
+                <div className="bulk-row" style={{ alignItems: 'flex-start' }}>
+                  <div style={{ fontSize: '12px', color: '#9ca3af' }}>
+                    {answerKeyStatus}
+                  </div>
+                  {answerKeyPairs.length > 0 && (
+                    <div style={{ maxHeight: '120px', overflowY: 'auto', fontSize: '12px', color: '#cbd5f5' }}>
+                      {answerKeyPairs.slice(0, 100).map((p, idx) => (
+                        <div key={`${p.number}-${idx}`}>
+                          Q{p.number}: {p.answer}
+                        </div>
+                      ))}
+                      {answerKeyPairs.length > 100 && (
+                        <div>... {answerKeyPairs.length - 100} more</div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              )}
               <div className="bulk-row">
                 <input
                   type="number"
@@ -2476,6 +2816,7 @@ function ReviewApp({ bootToken, bootUser, showTitle = true }: ReviewAppProps) {
                   onReject={() => rejectQuestion(q.question_id)}
                   onUpdate={(patch) => updateQuestion(q.question_id, patch)}
                   onToggleCorrect={(letter) => toggleCorrect(q.question_id, letter)}
+                  onApplyAnswer={() => applyAnswerToQuestion(q)}
                   onDelete={() => deleteDraftQuestion(q.question_id)}
                   selected={selectedIds.has(q.question_id)}
                   onToggleSelect={() => {
@@ -2593,13 +2934,14 @@ interface QuestionCardProps {
   onReject: () => void
   onUpdate: (patch: Partial<Question>) => void
   onToggleCorrect: (letter: string) => void
+  onApplyAnswer: () => void
   onDelete: () => void
   selected: boolean
   onToggleSelect: () => void
   pageImages: { id: string; filename: string }[]
 }
 
-function QuestionCard({ question: q, index, batchId, assetUrl, onUploadAsset, onVerify, onReject, onUpdate, onToggleCorrect, onDelete, selected, onToggleSelect, pageImages }: QuestionCardProps) {
+function QuestionCard({ question: q, index, batchId, assetUrl, onUploadAsset, onVerify, onReject, onUpdate, onToggleCorrect, onApplyAnswer, onDelete, selected, onToggleSelect, pageImages }: QuestionCardProps) {
   const [editMode, setEditMode] = useState(false)
   const [text, setText] = useState(q.questionText)
   const [explanation, setExplanation] = useState(q.explanation || '')
@@ -2950,6 +3292,7 @@ function QuestionCard({ question: q, index, batchId, assetUrl, onUploadAsset, on
           <>
             <button className="btn edit" onClick={() => setEditMode(true)} title="Edit question text, options, and metadata.">Edit</button>
             <button className="btn edit" onClick={() => setEditMode(true)} title="Edit explanation text or images.">Edit Explanation</button>
+            <button className="btn edit" onClick={onApplyAnswer} title="Apply the answer key to this question.">Apply Answer</button>
           </>
         )}
         <button className="btn verify" onClick={onVerify} title="Mark this question as verified.">Verify</button>

@@ -1,10 +1,12 @@
 import React, { useState } from 'react';
+import React, { useState } from 'react';
 import QuestionUploadForm from './components/QuestionUploadForm';
 import QuestionsList from './components/QuestionsList';
 import ToastContainer from './components/ToastContainer';
 import { useToast } from './hooks/useToast';
 import './App.css';
 import { QuestionFormProvider } from './context/QuestionFormContext';
+import ReviewApp from './ReviewApp';
 
 type View = 'login' | 'select' | 'upload' | 'list' | 'ai';
 
@@ -16,7 +18,7 @@ function App() {
   const { toasts, removeToast } = useToast();
   console.log("API Base URL:", process.env.REACT_APP_API_BASE_URL);
   console.log("Environment:", process.env.REACT_APP_ENVIRONMENT);
-  const aiUrl = process.env.REACT_APP_AI_AUTOMATION_URL || 'http://localhost:5173';
+  const isAiView = currentView === 'ai';
 
   function handleLogin(e: React.FormEvent) {
     e.preventDefault();
@@ -36,8 +38,9 @@ function App() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-100">
+    <div className={`min-h-screen app-root ${isAiView ? 'ai-mode' : 'bg-gray-100'}`}>
       {/* Navigation */}
+      {!isAiView && (
       <nav className="bg-white shadow-sm border-b border-gray-200 sticky top-0 z-20">
         <div className="max-w-6xl mx-auto px-4">
           <div className="flex flex-col gap-2 sm:flex-row sm:justify-between sm:items-center sm:h-16 py-2">
@@ -99,10 +102,11 @@ function App() {
           </div>
         </div>
       </nav>
+      )}
 
       {/* Main Content */}
       <QuestionFormProvider>
-        <main className="py-8">
+        <main className={isAiView ? 'ai-full' : 'py-8'}>
           {currentView === 'login' && (
             <div className="max-w-md mx-auto px-4">
               <div className="bg-white shadow-sm border border-gray-200 rounded-lg p-6">
@@ -172,28 +176,12 @@ function App() {
           )}
           {currentView === 'upload' && <QuestionUploadForm />}
           {currentView === 'list' && <QuestionsList />}
-          {currentView === 'ai' && (
-            <div className="max-w-6xl mx-auto px-4">
-              <div className="flex items-center justify-between mb-4">
-                <h2 className="text-xl font-semibold text-gray-900">AI Automation Review</h2>
-                <a
-                  href={aiUrl}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="text-sm text-primary-700 hover:text-primary-900"
-                >
-                  Open in new tab
-                </a>
-              </div>
-              <div className="ai-frame-wrapper">
-                <iframe title="AI Automation" src={aiUrl} className="ai-frame" />
-              </div>
-            </div>
-          )}
+          {currentView === 'ai' && <ReviewApp showTitle={false} />}
         </main>
       </QuestionFormProvider>
 
       {/* Footer */}
+      {!isAiView && (
       <footer className="bg-white border-t border-gray-200 py-6 mt-12">
         <div className="max-w-6xl mx-auto px-4 text-center">
           <p className="text-sm text-gray-500">
@@ -204,6 +192,7 @@ function App() {
           </p>
         </div>
       </footer>
+      )}
 
       {/* Toast Notifications */}
       <ToastContainer toasts={toasts} onRemove={removeToast} />

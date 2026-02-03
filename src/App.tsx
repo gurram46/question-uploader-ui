@@ -102,7 +102,7 @@ function App() {
 
       {/* Main Content */}
       <QuestionFormProvider>
-        <main className="py-8">
+        <main className={currentView === 'ai' ? 'ai-full' : 'py-8'}>
           {currentView === 'login' && (
             <div className="max-w-md mx-auto px-4">
               <div className="bg-white shadow-sm border border-gray-200 rounded-lg p-6">
@@ -172,7 +172,11 @@ function App() {
           )}
           {currentView === 'upload' && <QuestionUploadForm />}
           {currentView === 'list' && <QuestionsList />}
-          {currentView === 'ai' && <ReviewApp showTitle={false} />}
+          {currentView === 'ai' && (
+            <div className="ai-full">
+              <ReviewApp showTitle={false} />
+            </div>
+          )}
         </main>
       </QuestionFormProvider>
 

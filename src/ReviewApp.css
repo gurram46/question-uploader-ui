@@ -1,0 +1,427 @@
+.review-scope {
+  background: #0f0f1a;
+  color: #e5e7eb;
+  min-height: 100vh;
+}
+
+.review-scope .app {
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+}
+
+.review-scope input,
+.review-scope select,
+.review-scope textarea {
+  background: #131722;
+  color: #e5e7eb;
+  border: 1px solid #2a2f3a;
+  border-radius: 10px;
+  padding: 8px 10px;
+  font-size: 13px;
+  outline: none;
+}
+
+.review-scope input::placeholder,
+.review-scope textarea::placeholder {
+  color: #6b7280;
+}
+
+.review-scope .header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 18px;
+  border-bottom: 1px solid #1f2430;
+  background: #0c0f18;
+  position: sticky;
+  top: 0;
+  z-index: 10;
+}
+
+.review-scope .header-title h1 {
+  margin: 0;
+  font-size: 18px;
+}
+
+.review-scope .header-controls {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.review-scope .header-tabs {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.review-scope .tab {
+  background: #131722;
+  border: 1px solid #242a36;
+  color: #cbd5f5;
+  border-radius: 10px;
+  padding: 6px 12px;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.review-scope .tab.active {
+  background: #2c2f4a;
+  border-color: #3a3f5f;
+  color: #f8fafc;
+}
+
+.review-scope .stats {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.review-scope .stat {
+  font-size: 12px;
+  background: #151925;
+  padding: 4px 10px;
+  border-radius: 999px;
+  border: 1px solid #242a36;
+}
+
+.review-scope .stat.verified {
+  color: #34d399;
+  border-color: rgba(52, 211, 153, 0.3);
+}
+
+.review-scope .stat.pending {
+  color: #fbbf24;
+  border-color: rgba(251, 191, 36, 0.3);
+}
+
+.review-scope .user-pill {
+  font-size: 12px;
+  background: #121521;
+  border: 1px solid #2a2f3a;
+  padding: 4px 10px;
+  border-radius: 999px;
+}
+
+.review-scope .main {
+  display: flex;
+  gap: 16px;
+  padding: 16px;
+}
+
+.review-scope .sidebar {
+  width: 280px;
+  background: #0f1420;
+  border: 1px solid #20263a;
+  border-radius: 14px;
+  padding: 12px;
+  height: calc(100vh - 96px);
+  overflow-y: auto;
+}
+
+.review-scope .upload-area {
+  margin-bottom: 12px;
+}
+
+.review-scope .upload-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  background: #1a1f2b;
+  border: 1px solid #2b3242;
+  padding: 8px 10px;
+  border-radius: 10px;
+  cursor: pointer;
+  font-size: 12px;
+}
+
+.review-scope .upload-label input {
+  display: none;
+}
+
+.review-scope .progress {
+  font-size: 12px;
+  color: #9ca3af;
+  margin-top: 6px;
+}
+
+.review-scope .batch-item {
+  border: 1px solid #232a3b;
+  border-radius: 10px;
+  padding: 8px 10px;
+  margin-bottom: 8px;
+  cursor: pointer;
+  background: #0f131d;
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  align-items: center;
+}
+
+.review-scope .batch-item.active {
+  border-color: #3a3f5f;
+  background: #161b28;
+}
+
+.review-scope .batch-id {
+  font-weight: 600;
+  font-size: 12px;
+}
+
+.review-scope .batch-meta {
+  font-size: 11px;
+  color: #9ca3af;
+}
+
+.review-scope .btn {
+  background: #1b2030;
+  color: #e5e7eb;
+  border: 1px solid #2a3142;
+  border-radius: 10px;
+  padding: 6px 10px;
+  cursor: pointer;
+  font-size: 12px;
+}
+
+.review-scope .btn.small {
+  padding: 4px 8px;
+  font-size: 11px;
+}
+
+.review-scope .btn.verify {
+  border-color: rgba(52, 211, 153, 0.4);
+  color: #34d399;
+}
+
+.review-scope .btn.reject {
+  border-color: rgba(248, 113, 113, 0.4);
+  color: #f87171;
+}
+
+.review-scope .btn.save {
+  border-color: rgba(59, 130, 246, 0.5);
+  color: #93c5fd;
+}
+
+.review-scope .btn.cancel {
+  border-color: rgba(156, 163, 175, 0.4);
+  color: #9ca3af;
+}
+
+.review-scope .bulk-metadata {
+  flex: 1;
+}
+
+.review-scope .bulk-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 10px;
+  align-items: center;
+}
+
+.review-scope .filters {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  align-items: center;
+  margin: 10px 0;
+}
+
+.review-scope .filter-pill {
+  background: #131722;
+  border: 1px solid #2a3142;
+  padding: 4px 10px;
+  border-radius: 999px;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.review-scope .pagination {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  margin: 8px 0 14px;
+}
+
+.review-scope .pagination-info {
+  font-size: 12px;
+  color: #9ca3af;
+}
+
+.review-scope .questions {
+  flex: 1;
+}
+
+.review-scope .question-card {
+  border: 1px solid #232a3b;
+  border-radius: 12px;
+  padding: 12px;
+  margin-bottom: 12px;
+  background: #0f131d;
+}
+
+.review-scope .question-header {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-bottom: 8px;
+}
+
+.review-scope .q-number {
+  font-weight: 600;
+}
+
+.review-scope .badges {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.review-scope .badge {
+  font-size: 11px;
+  padding: 3px 8px;
+  border-radius: 999px;
+  background: #1b2030;
+  border: 1px solid #2b3242;
+}
+
+.review-scope .badge.state.verified {
+  color: #34d399;
+  border-color: rgba(52, 211, 153, 0.3);
+}
+
+.review-scope .badge.state.rejected {
+  color: #f87171;
+  border-color: rgba(248, 113, 113, 0.3);
+}
+
+.review-scope .question-text {
+  margin: 8px 0;
+  line-height: 1.5;
+}
+
+.review-scope .options {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 8px 0;
+}
+
+.review-scope .option {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  border: 1px solid #232a3b;
+  border-radius: 10px;
+  padding: 6px 8px;
+  background: #111521;
+}
+
+.review-scope .option.correct {
+  border-color: rgba(52, 211, 153, 0.4);
+}
+
+.review-scope .option-text {
+  flex: 1;
+}
+
+.review-scope .meta-row {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  align-items: center;
+  margin: 10px 0;
+}
+
+.review-scope .actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-top: 8px;
+}
+
+.review-scope .question-image,
+.review-scope .option-image {
+  max-width: 240px;
+  border-radius: 10px;
+  border: 1px solid #2a3142;
+}
+
+.review-scope .committed-page {
+  flex-direction: column;
+}
+
+.review-scope .committed-header {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  margin-bottom: 10px;
+}
+
+.review-scope .committed-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.review-scope .committed-card {
+  background: #0f131d;
+}
+
+.review-scope .tour-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+}
+
+.review-scope .tour-backdrop {
+  position: absolute;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.6);
+}
+
+.review-scope .tour-card {
+  position: relative;
+  max-width: 420px;
+  margin: 10vh auto 0;
+  background: #111522;
+  border: 1px solid #2a3142;
+  border-radius: 12px;
+  padding: 16px;
+}
+
+.review-scope .tour-title {
+  font-weight: 600;
+  margin-bottom: 6px;
+}
+
+.review-scope .tour-body {
+  font-size: 13px;
+  color: #9ca3af;
+}
+
+.review-scope .tour-actions {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-top: 12px;
+}
+
+@media (max-width: 900px) {
+  .review-scope .main {
+    flex-direction: column;
+  }
+
+  .review-scope .sidebar {
+    width: 100%;
+    height: auto;
+  }
+}

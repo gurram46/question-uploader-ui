@@ -54,7 +54,9 @@ interface BatchSummary {
   total_pages?: number
   pages_done?: number
   progress?: number
+  stage_timings_seconds?: Record<string, number> | null
   created_at?: string
+  updated_at?: string
   uploaded_by?: string
   upload_subject?: string
   upload_chapter?: string
@@ -94,6 +96,7 @@ interface CommittedQuestion {
 }
 
 const API_URL = getPythonBase()
+const EXPRESS_URL = getExpressBase()
 
 type ReviewAppProps = {
   bootToken?: string
@@ -121,9 +124,11 @@ function ReviewApp({ bootToken, bootUser, showTitle = true, onLogout }: ReviewAp
   const [filter, setFilter] = useState<string>('all')
   const [filterExamType, setFilterExamType] = useState('')
   const [filterMissingAssets, setFilterMissingAssets] = useState(false)
+  const [nowTs, setNowTs] = useState(Date.now())
   const [uploading, setUploading] = useState(false)
   const [uploadProgress, setUploadProgress] = useState('')
   const [expressUrl, setExpressUrl] = useState(getExpressBase())
+  const [difficultyTypes, setDifficultyTypes] = useState<string[]>([])
   const [validationResult, setValidationResult] = useState<ValidationResult | null>(null)
   const [showValidation, setShowValidation] = useState(false)
   const [lastValidationQuestions, setLastValidationQuestions] = useState<Question[]>([])
@@ -160,8 +165,10 @@ function ReviewApp({ bootToken, bootUser, showTitle = true, onLogout }: ReviewAp
   const [bulkAnswerPage, setBulkAnswerPage] = useState('')
   const [answerKeyPairs, setAnswerKeyPairs] = useState<{ number: number; answer: string }[]>([])
   const [answerKeyStatus, setAnswerKeyStatus] = useState('')
+  const [answerKeyDetected, setAnswerKeyDetected] = useState<{ count: number; min: number | null; max: number | null }>({ count: 0, min: null, max: null })
   const [answerKeyMaxPages, setAnswerKeyMaxPages] = useState('20')
   const [answerKeyMaxQ, setAnswerKeyMaxQ] = useState('1200')
+  const [answerKeyMinQ, setAnswerKeyMinQ] = useState('1')
   const [answerKeyStartPage, setAnswerKeyStartPage] = useState('1')
   const [answerKeyOcrDpi, setAnswerKeyOcrDpi] = useState('300')
   const [uiError, setUiError] = useState('')
@@ -177,23 +184,31 @@ function ReviewApp({ bootToken, bootUser, showTitle = true, onLogout }: ReviewAp
   const [allQuestions, setAllQuestions] = useState<Question[] | null>(null)
   const [allLoading, setAllLoading] = useState(false)
   const refreshTimer = useRef<number | null>(null)
+  const autoRefreshTimer = useRef<number | null>(null)
+  const userSetPageRef = useRef(false)
+  const lastAutoPageRef = useRef<number | null>(null)
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
+  const [startingBatchId, setStartingBatchId] = useState<string | null>(null)
+  const questionsAnchorRef = useRef<HTMLDivElement | null>(null)
+  const prevQuestionsCountRef = useRef(0)
+  const autoLoadAllRef = useRef(false)
 
   // Auth state
-  const [isLoggedIn, setIsLoggedIn] = useState(!!localStorage.getItem('token'))
   const [token, setToken] = useState(localStorage.getItem('token') || '')
   const [username, setUsername] = useState(localStorage.getItem('username') || '')
-  const [loginError, setLoginError] = useState('')
+  const [isLoggedIn, setIsLoggedIn] = useState(!!(token || username))
 
   useEffect(() => {
     if (bootToken) {
       localStorage.setItem('token', bootToken)
       setToken(bootToken)
+    }
+    if (bootUser) {
+      localStorage.setItem('username', bootUser)
+      setUsername(bootUser)
+    }
+    if (bootToken || bootUser) {
       setIsLoggedIn(true)
-      if (bootUser) {
-        localStorage.setItem('username', bootUser)
-        setUsername(bootUser)
-      }
     }
   }, [bootToken, bootUser])
 
@@ -209,10 +224,17 @@ function ReviewApp({ bootToken, bootUser, showTitle = true, onLogout }: ReviewAp
         setUsername(userParam)
       }
       setIsLoggedIn(true)
-      setLoginError('')
       const cleanUrl = `${window.location.origin}${window.location.pathname}`
       window.history.replaceState({}, '', cleanUrl)
     }
+  }, [])
+
+  useEffect(() => {
+    const storedToken = localStorage.getItem('token') || ''
+    const storedUser = localStorage.getItem('username') || ''
+    if (storedToken && storedToken !== token) setToken(storedToken)
+    if (storedUser && storedUser !== username) setUsername(storedUser)
+    setIsLoggedIn(Boolean(storedToken || storedUser))
   }, [])
 
   useEffect(() => {
@@ -265,6 +287,11 @@ function ReviewApp({ bootToken, bootUser, showTitle = true, onLogout }: ReviewAp
   }, [allQuestions, answerKeyMaxQ])
 
   useEffect(() => {
+    const timer = window.setInterval(() => setNowTs(Date.now()), 1000)
+    return () => window.clearInterval(timer)
+  }, [])
+
+  useEffect(() => {
     const key = 'dq_review_tour_done'
     if (!localStorage.getItem(key)) {
       setTourOpen(true)
@@ -273,8 +300,51 @@ function ReviewApp({ bootToken, bootUser, showTitle = true, onLogout }: ReviewAp
   }, [])
 
   function authHeaders(): Record<string, string> {
-    return token ? { Authorization: `Bearer ${token}` } : {}
+    const value = token || localStorage.getItem('token') || ''
+    return value ? { Authorization: `Bearer ${value}` } : {}
   }
+
+  function apiFetch(input: RequestInfo | URL, init: RequestInit = {}) {
+    const headers = init.headers ? { ...(init.headers as Record<string, string>) } : {}
+    const value = token || localStorage.getItem('token') || ''
+    if (value && !headers.Authorization) {
+      headers.Authorization = `Bearer ${value}`
+    }
+    return fetch(input, { ...init, headers })
+  }
+
+  useEffect(() => {
+    let canceled = false
+    async function loadDifficultyTypes() {
+      try {
+        const res = await apiFetch(`${expressUrl}/difficulties`, { headers: authHeaders() })
+        if (!res.ok) return
+        const data = await res.json()
+        const raw = Array.isArray(data) ? data : []
+        const mapped = raw
+          .map((item: any) => {
+            if (typeof item === 'string') return item
+            return (
+              item?.difficulty_type ||
+              item?.difficulty_name ||
+              item?.name ||
+              item?.label ||
+              ''
+            )
+          })
+          .map((v: string) => String(v || '').trim())
+          .filter(Boolean)
+        const unique = Array.from(new Set(mapped))
+        if (!canceled) setDifficultyTypes(unique)
+      } catch {
+        // ignore errors
+      }
+    }
+    if (expressUrl) loadDifficultyTypes()
+    return () => {
+      canceled = true
+    }
+  }, [expressUrl, token])
 
   function applyPreset(preset: BulkPreset) {
     setBulkSubject(preset.subject || '')
@@ -319,29 +389,6 @@ function ReviewApp({ bootToken, bootUser, showTitle = true, onLogout }: ReviewAp
     }
   }
 
-  async function handleLogin(user: string, pass: string) {
-    try {
-      const res = await fetch(`${API_URL}/auth/login`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ username: user, password: pass })
-      })
-      if (!res.ok) {
-        setLoginError('Invalid credentials')
-        return
-      }
-      const data = await res.json()
-      localStorage.setItem('token', data.token)
-      localStorage.setItem('username', data.username)
-      setToken(data.token)
-      setUsername(data.username)
-      setIsLoggedIn(true)
-      setLoginError('')
-    } catch {
-      setLoginError('Login failed')
-    }
-  }
-
   function handleLogout() {
     localStorage.removeItem('token')
     localStorage.removeItem('username')
@@ -356,9 +403,18 @@ function ReviewApp({ bootToken, bootUser, showTitle = true, onLogout }: ReviewAp
     }
   }, [isLoggedIn, token])
 
-  useEffect(() => {
-    setSelectedIds(new Set())
-  }, [currentBatch])
+    useEffect(() => {
+      setSelectedIds(new Set())
+    }, [currentBatch])
+
+    useEffect(() => {
+      if (!currentBatch) return
+      const hasDraft = draft && (draft as any).batch_id === currentBatch
+      if (!hasDraft) {
+        loadDraft(currentBatch, 1, pageSize)
+          .catch(() => undefined)
+      }
+    }, [currentBatch, pageSize])
 
   useEffect(() => {
     const base = allQuestions || (draft?.questions || [])
@@ -367,15 +423,42 @@ function ReviewApp({ bootToken, bootUser, showTitle = true, onLogout }: ReviewAp
     ).sort((a, b) => a - b)
     if (!pages.length) {
       setSourcePage(null)
+      lastAutoPageRef.current = null
       return
     }
+    const latest = pages[pages.length - 1]
     if (sourcePage === null || !pages.includes(sourcePage)) {
-      setSourcePage(pages[0])
+      setSourcePage(latest)
+      lastAutoPageRef.current = latest
+      return
+    }
+    if (!userSetPageRef.current && sourcePage !== latest) {
+      setSourcePage(latest)
+      lastAutoPageRef.current = latest
     }
   }, [allQuestions, draft?.questions, sourcePage])
 
+  useEffect(() => {
+    if (autoRefreshTimer.current) {
+      window.clearInterval(autoRefreshTimer.current)
+      autoRefreshTimer.current = null
+    }
+    if (!currentBatch) return
+    const batch = batches.find(b => b.batch_id === currentBatch)
+    if (!batch || (batch.status !== 'running' && batch.status !== 'queued')) return
+    autoRefreshTimer.current = window.setInterval(() => {
+      loadDraft(currentBatch, currentPage, pageSize)
+    }, 5000)
+    return () => {
+      if (autoRefreshTimer.current) {
+        window.clearInterval(autoRefreshTimer.current)
+        autoRefreshTimer.current = null
+      }
+    }
+  }, [currentBatch, batches, currentPage, pageSize])
+
   async function loadBatches() {
-    const res = await fetch(`${API_URL}/draft/drafts`, { headers: authHeaders() })
+    const res = await apiFetch(`${API_URL}/draft/drafts`, { headers: authHeaders() })
     if (!res.ok) return
     const data = await res.json()
     setBatches(data)
@@ -393,7 +476,45 @@ function ReviewApp({ bootToken, bootUser, showTitle = true, onLogout }: ReviewAp
     const parts = [file, total ? `${total} questions` : null, status, topic, by, created]
     if (progress) parts.push(progress)
     if (pages) parts.push(pages)
+    if (batch.status === 'running' || batch.status === 'queued') {
+      const startTs = batch.updated_at || batch.created_at
+      const elapsed = formatElapsed(startTs)
+      if (elapsed) parts.push(`Running ${elapsed}`)
+      const ist = formatIstTime(startTs)
+      if (ist) parts.push(`IST ${ist}`)
+      const t = parseTimestamp(startTs)
+      if (t) {
+        const elapsedSec = Math.max(0, Math.floor((nowTs - t) / 1000))
+        const eta = formatEta(elapsedSec, batch.pages_done, batch.total_pages)
+        if (eta) parts.push(`ETA ${eta}`)
+      }
+    }
+    if (batch.status === 'done') {
+      const startTs = batch.created_at
+      const endTs = batch.updated_at
+      if (startTs && endTs) {
+        const start = parseTimestamp(startTs)
+        const end = parseTimestamp(endTs)
+        if (start && end) {
+          const totalSec = Math.max(0, Math.floor((end - start) / 1000))
+          const total = formatDuration(totalSec)
+          if (total) parts.push(`Total ${total}`)
+        }
+      }
+      const endIst = formatIstTime(batch.updated_at || batch.created_at)
+      if (endIst) parts.push(`IST ${endIst}`)
+    }
     return parts.filter(Boolean).join(' - ')
+  }
+
+  function formatStageTimings(timings?: Record<string, number> | null) {
+    if (!timings) return ''
+    const entries = Object.entries(timings).filter(([, v]) => typeof v === 'number' && v > 0)
+    if (!entries.length) return ''
+    const parts = entries
+      .sort((a, b) => b[1] - a[1])
+      .map(([k, v]) => `${k}:${Math.round(v)}s`)
+    return parts.join(' · ')
   }
 
   function isPausedStatus(status?: string) {
@@ -407,7 +528,7 @@ function ReviewApp({ bootToken, bootUser, showTitle = true, onLogout }: ReviewAp
     }
     setUiNotice(`Processing batch ${batch.batch_id}...`)
     while (true) {
-      const pollRes = await fetch(`${API_URL}/draft/jobs/${batch.job_id}`, { headers: authHeaders() })
+      const pollRes = await apiFetch(`${API_URL}/draft/jobs/${batch.job_id}`, { headers: authHeaders() })
       if (!pollRes.ok) {
         setUiError('Failed to fetch job status.')
         return
@@ -423,7 +544,8 @@ function ReviewApp({ bootToken, bootUser, showTitle = true, onLogout }: ReviewAp
                 total_questions: job.total_questions,
                 pages_done: job.pages_done,
                 progress: job.progress,
-                job_id: job.job_id
+                job_id: job.job_id,
+                stage_timings_seconds: job.stage_timings_seconds ?? b.stage_timings_seconds
               }
             : b
         )
@@ -449,7 +571,7 @@ function ReviewApp({ bootToken, bootUser, showTitle = true, onLogout }: ReviewAp
 
   async function loadDraft(batchId: string, page = currentPage, limit = pageSize) {
     const safeLimit = Math.min(200, Math.max(1, limit))
-    const res = await fetch(`${API_URL}/draft/${batchId}?page=${page}&limit=${safeLimit}`, { headers: authHeaders() })
+    const res = await apiFetch(`${API_URL}/draft/${batchId}?page=${page}&limit=${safeLimit}`, { headers: authHeaders() })
     if (res.ok) {
       const data = await res.json()
       setDraft(data)
@@ -482,7 +604,7 @@ function ReviewApp({ bootToken, bootUser, showTitle = true, onLogout }: ReviewAp
     if (bulkChapter) formData.append('upload_chapter', bulkChapter)
     if (bulkTopic) formData.append('upload_topic', bulkTopic)
 
-    const res = await fetch(`${API_URL}/draft/upload`, {
+    const res = await apiFetch(`${API_URL}/draft/upload`, {
       method: 'POST',
       headers: authHeaders(),
       body: formData
@@ -493,22 +615,42 @@ function ReviewApp({ bootToken, bootUser, showTitle = true, onLogout }: ReviewAp
       setUploading(false)
       return
     }
-    const data = await res.json()
-    const jobId = data.job_id
-    const batchId = data.batch_id
-    if (!jobId || !batchId) {
-      setUploadProgress('Upload failed: missing job id')
-      setUploading(false)
-      return
-    }
-    setCurrentBatch(batchId)
-    await loadBatches()
+      const data = await res.json()
+      const jobId = data.job_id
+      const batchId = data.batch_id
+      if (!jobId || !batchId) {
+        setUploadProgress('Upload failed: missing job id')
+        setUploading(false)
+        return
+      }
+      setCurrentBatch(batchId)
+      await loadBatches()
+      try {
+        await dispatchBatch({ ...data, job_id: jobId, batch_id: batchId, status: 'queued' })
+      } catch {
+        // if dispatch fails, the Start button is still available
+      }
 
     let lastProgress = -1
     while (true) {
-      const pollRes = await fetch(`${API_URL}/draft/jobs/${jobId}`, { headers: authHeaders() })
+      const pollRes = await apiFetch(`${API_URL}/draft/jobs/${jobId}`, { headers: authHeaders() })
       const job = await pollRes.json()
       setUploadProgress(`Processing... ${job.progress || 0}%`)
+      setBatches(prev =>
+        prev.map(b =>
+          b.batch_id === batchId
+            ? {
+                ...b,
+                status: job.status,
+                total_pages: job.total_pages,
+                total_questions: job.total_questions,
+                pages_done: job.pages_done,
+                progress: job.progress,
+                stage_timings_seconds: job.stage_timings_seconds ?? b.stage_timings_seconds
+              }
+            : b
+        )
+      )
 
       if (job.progress !== lastProgress) {
         lastProgress = job.progress
@@ -545,7 +687,7 @@ function ReviewApp({ bootToken, bootUser, showTitle = true, onLogout }: ReviewAp
 
   async function verifyQuestion(qid: string, refresh = true) {
     console.info('[verify] start', { qid, batch: currentBatch })
-    const res = await fetch(`${API_URL}/draft/${currentBatch}/verify/${qid}`, {
+    const res = await apiFetch(`${API_URL}/draft/${currentBatch}/verify/${qid}`, {
       method: 'POST',
       headers: authHeaders()
     })
@@ -569,15 +711,9 @@ function ReviewApp({ bootToken, bootUser, showTitle = true, onLogout }: ReviewAp
     console.info('[verify-bulk] start', { mode, count: targets.length, batch: currentBatch })
     setActionStatus({ state: 'working', message: 'Verifying...' })
     const body: any = { patch: { verification_state: 'verified' }, mode }
-    if (mode === 'selected') {
+    if (mode === 'selected' || mode === 'range') {
+      body.mode = 'selected'
       body.ids = targets.map(t => t.question_id)
-    } else if (mode === 'range') {
-      const start = Number(bulkRangeStart)
-      const end = Number(bulkRangeEnd)
-      if (Number.isFinite(start) && Number.isFinite(end)) {
-        body.range_start = start
-        body.range_end = end
-      }
     }
     await bulkUpdateRequest(body)
     scheduleDraftRefresh(currentBatch)
@@ -591,7 +727,7 @@ function ReviewApp({ bootToken, bootUser, showTitle = true, onLogout }: ReviewAp
     const ok = window.confirm(`Delete batch ${batchId}? This will remove the draft and job.`)
     if (!ok) return
     try {
-      const res = await fetch(`${API_URL}/draft/${batchId}`, {
+      const res = await apiFetch(`${API_URL}/draft/${batchId}`, {
         method: 'DELETE',
         headers: authHeaders()
       })
@@ -618,7 +754,7 @@ function ReviewApp({ bootToken, bootUser, showTitle = true, onLogout }: ReviewAp
     const ok = window.confirm(`Delete question ${questionId}? This cannot be undone.`)
     if (!ok) return
     try {
-      const res = await fetch(`${API_URL}/draft/${currentBatch}/question/${questionId}`, {
+      const res = await apiFetch(`${API_URL}/draft/${currentBatch}/question/${questionId}`, {
         method: 'DELETE',
         headers: authHeaders()
       })
@@ -662,8 +798,8 @@ function ReviewApp({ bootToken, bootUser, showTitle = true, onLogout }: ReviewAp
       return
     }
     try {
-      setUiNotice(`Starting batch ${batch.batch_id}...`)
-      const res = await fetch(`${API_URL}/draft/jobs/${batch.job_id}/dispatch`, {
+      setUiNotice(`${isPausedStatus(batch.status) ? 'Resuming' : 'Starting'} batch ${batch.batch_id}...`)
+      const res = await apiFetch(`${API_URL}/draft/jobs/${batch.job_id}/dispatch`, {
         method: 'POST',
         headers: authHeaders()
       })
@@ -675,6 +811,7 @@ function ReviewApp({ bootToken, bootUser, showTitle = true, onLogout }: ReviewAp
       }
       setUiError('')
       await loadBatches()
+      setUiNotice(`Batch ${batch.batch_id} dispatched. Waiting for worker...`)
       pollJobAndLoad({ ...batch, job_id: batch.job_id })
     } catch (err: any) {
       setUiError(err?.message || 'Failed to start batch')
@@ -682,14 +819,20 @@ function ReviewApp({ bootToken, bootUser, showTitle = true, onLogout }: ReviewAp
     }
   }
 
-  async function rejectQuestion(qid: string) {
-    await fetch(`${API_URL}/draft/${currentBatch}/reject/${qid}`, {
-      method: 'POST',
-      headers: authHeaders()
-    })
-    updateLocalQuestion(qid, { verification_state: 'rejected' } as any)
-    scheduleDraftRefresh(currentBatch!)
-  }
+    async function rejectQuestion(qid: string) {
+      if (!currentBatch) return
+      const reason = window.prompt('Why are you rejecting this question? (required)')?.trim()
+      if (!reason) {
+        alert('Reject reason is required.')
+        return
+      }
+      const ok = await updateQuestion(qid, { verification_state: 'rejected', reject_reason: reason } as any, false)
+      if (ok) {
+        updateLocalQuestion(qid, { verification_state: 'rejected', reject_reason: reason } as any)
+        scheduleDraftRefresh(currentBatch)
+        setUiNotice('Question rejected with reason.')
+      }
+    }
 
   function scheduleDraftRefresh(batchId: string) {
     if (refreshTimer.current) {
@@ -720,7 +863,7 @@ function ReviewApp({ bootToken, bootUser, showTitle = true, onLogout }: ReviewAp
 
   async function updateQuestion(qid: string, patch: Partial<Question>, refresh = true) {
     try {
-      const res = await fetch(`${API_URL}/draft/${currentBatch}/question/${qid}`, {
+      const res = await apiFetch(`${API_URL}/draft/${currentBatch}/question/${qid}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json', ...authHeaders() },
         body: JSON.stringify({ patch })
@@ -748,7 +891,7 @@ function ReviewApp({ bootToken, bootUser, showTitle = true, onLogout }: ReviewAp
     if (!currentBatch) return null
     const formData = new FormData()
     formData.append('file', file)
-    const res = await fetch(`${API_URL}/draft/assets/${currentBatch}/upload`, {
+    const res = await apiFetch(`${API_URL}/draft/assets/${currentBatch}/upload`, {
       method: 'POST',
       headers: authHeaders(),
       body: formData
@@ -764,7 +907,7 @@ function ReviewApp({ bootToken, bootUser, showTitle = true, onLogout }: ReviewAp
   async function uploadCommittedAsset(questionId: number, file: File): Promise<string | null> {
     const formData = new FormData()
     formData.append('file', file)
-    const res = await fetch(`${API_URL}/draft/assets/committed/${questionId}/upload`, {
+    const res = await apiFetch(`${API_URL}/draft/assets/committed/${questionId}/upload`, {
       method: 'POST',
       headers: authHeaders(),
       body: formData
@@ -820,7 +963,7 @@ function ReviewApp({ bootToken, bootUser, showTitle = true, onLogout }: ReviewAp
       topic_name: (bulkTopic || '').trim(),
       exam_type: (bulkExamType || '').trim()
     }
-    const res = await fetch(`${API_URL}/draft/${currentBatch}/question`, {
+    const res = await apiFetch(`${API_URL}/draft/${currentBatch}/question`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', ...authHeaders() },
       body: JSON.stringify({ question: payload })
@@ -1227,9 +1370,10 @@ function ReviewApp({ bootToken, bootUser, showTitle = true, onLogout }: ReviewAp
     form.append('file', file)
     const maxPages = Math.max(1, Math.min(20, Number(answerKeyMaxPages) || 6))
     const maxQ = Math.max(1, Number(answerKeyMaxQ) || 1200)
+    const minQ = Math.max(1, Number(answerKeyMinQ) || 1)
     const startPage = Math.max(1, Number(answerKeyStartPage) || 1)
     const ocrDpi = Math.max(150, Math.min(450, Number(answerKeyOcrDpi) || 300))
-    const res = await fetch(`${API_URL}/draft/answer-key/parse?max_pages=${maxPages}&start_page=${startPage}&min_q=1&max_q=${maxQ}&ocr_dpi=${ocrDpi}`, {
+    const res = await apiFetch(`${API_URL}/draft/answer-key/parse?max_pages=${maxPages}&start_page=${startPage}&min_q=${minQ}&max_q=${maxQ}&ocr_dpi=${ocrDpi}`, {
       method: 'POST',
       headers: authHeaders(),
       body: form
@@ -1242,6 +1386,14 @@ function ReviewApp({ bootToken, bootUser, showTitle = true, onLogout }: ReviewAp
     const data = await res.json()
     const pairs = Array.isArray(data.pairs) ? data.pairs : []
     setAnswerKeyPairs(pairs)
+    if (pairs.length > 0) {
+      const nums = pairs.map((p: any) => Number(p.number)).filter((n: any) => Number.isFinite(n))
+      const min = nums.length ? Math.min(...nums) : null
+      const max = nums.length ? Math.max(...nums) : null
+      setAnswerKeyDetected({ count: nums.length, min, max })
+    } else {
+      setAnswerKeyDetected({ count: 0, min: null, max: null })
+    }
     if (pairs.length > 0) {
       const keyText = pairs.map((p: any) => `${p.number}.${p.answer}`).join(' ')
       setBulkAnswerKey(keyText)
@@ -1541,7 +1693,7 @@ function ReviewApp({ bootToken, bootUser, showTitle = true, onLogout }: ReviewAp
     let page = 1
     const limit = 200
     while (true) {
-      const res = await fetch(`${API_URL}/draft/${batchId}?page=${page}&limit=${limit}`, { headers: authHeaders() })
+    const res = await apiFetch(`${API_URL}/draft/${batchId}?page=${page}&limit=${limit}`, { headers: authHeaders() })
       if (!res.ok) break
       const data = await res.json()
       const qs = Array.isArray(data.questions) ? data.questions : []
@@ -1572,7 +1724,7 @@ function ReviewApp({ bootToken, bootUser, showTitle = true, onLogout }: ReviewAp
 
   async function bulkUpdateRequest(body: any) {
     if (!currentBatch) return null
-    const res = await fetch(`${API_URL}/draft/${currentBatch}/bulk-update`, {
+    const res = await apiFetch(`${API_URL}/draft/${currentBatch}/bulk-update`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', ...authHeaders() },
       body: JSON.stringify(body)
@@ -1600,9 +1752,10 @@ function ReviewApp({ bootToken, bootUser, showTitle = true, onLogout }: ReviewAp
   }
 
   function filterQuestionsByRange(questions: Question[], start: number, end: number): Question[] {
-    return questions.filter(q => {
-      const num = parseQuestionNumber(q)
-      return num !== null && num >= start && num <= end
+    return questions.filter((q, idx) => {
+      const parsed = parseQuestionNumber(q)
+      const num = parsed !== null ? parsed : (idx + 1)
+      return num >= start && num <= end
     })
   }
 
@@ -1651,23 +1804,25 @@ function ReviewApp({ bootToken, bootUser, showTitle = true, onLogout }: ReviewAp
       mode === 'selected' ? getQuestionsForSelected() :
       mode === 'range' ? await getQuestionsForRange() :
       await ensureAllQuestions()
-    const payload = buildBulkPayload(source)
-    if (!payload.length) {
-      alert('No verified questions to validate')
-      return
-    }
-    setLastValidationQuestions(source.filter(q => q.verification_state === 'verified'))
-    const controller = new AbortController()
-    const timeoutId = window.setTimeout(() => controller.abort(), 60000)
-    try {
-      console.info('[validate] start', { mode, count: payload.length, url: expressUrl })
-      setActionStatus({ state: 'working', message: 'Validating...' })
-      const res = await fetch(`${expressUrl}/api/questions/validate`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', ...authHeaders() },
-        body: JSON.stringify({ questions: payload }),
-        signal: controller.signal
-      })
+      const payload = buildBulkPayload(source)
+      if (!payload.length || !currentBatch) {
+        alert('No verified questions to validate')
+        return
+      }
+      const verifiedSource = source.filter(q => q.verification_state === 'verified')
+      setLastValidationQuestions(verifiedSource)
+        const questionIds = verifiedSource.map(q => q.question_id).filter(Boolean)
+        const controller = new AbortController()
+        const timeoutId = window.setTimeout(() => controller.abort(), 60000)
+        try {
+          console.info('[validate] start', { mode, count: payload.length, url: EXPRESS_URL })
+          setActionStatus({ state: 'working', message: 'Validating...' })
+          const res = await apiFetch(`${EXPRESS_URL}/api/questions/validate`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', ...authHeaders() },
+            body: JSON.stringify({ questions: payload }),
+            signal: controller.signal
+          })
       console.info('[validate] response', { status: res.status })
       if (!res.ok) {
         const msg = await res.text()
@@ -1685,19 +1840,20 @@ function ReviewApp({ bootToken, bootUser, showTitle = true, onLogout }: ReviewAp
       setValidationResult(normalized)
       const errors = Array.isArray(normalized.errors) ? normalized.errors : []
       setValidationErrors(errors)
-      const failedIds = new Set<string>()
-      const duplicateIds = new Set<string>()
-      for (const err of errors) {
-        const idx = typeof err?.index === 'number' ? err.index : -1
-        const q = idx >= 0 ? source[idx] : null
-        if (q?.question_id) {
+        const failedIds = new Set<string>()
+        const duplicateIds = new Set<string>()
+        for (const err of errors) {
+          const directId = (err as any)?.question_id || (err as any)?.questionId
+          const idx = typeof (err as any)?.index === 'number' ? (err as any).index : -1
+          const q = idx >= 0 ? source[idx] : null
+          const targetId = directId || q?.question_id
+          if (!targetId) continue
           if ((err as any)?.reason === 'DUPLICATE_IN_DB') {
-            duplicateIds.add(q.question_id)
+            duplicateIds.add(targetId)
           } else {
-            failedIds.add(q.question_id)
+            failedIds.add(targetId)
           }
         }
-      }
       const validIds = new Set<string>()
       for (const q of source) {
         if (q?.question_id && !failedIds.has(q.question_id) && !duplicateIds.has(q.question_id)) {
@@ -1821,23 +1977,25 @@ function ReviewApp({ bootToken, bootUser, showTitle = true, onLogout }: ReviewAp
       return
     }
     if (!confirm(`Commit verified questions to database?\n\n${commitSummaryText(summary)}`)) return
-    const payload = buildBulkPayload(source)
-    if (!payload.length) {
-      alert('No verified questions to commit')
-      return
-    }
-    setLastValidationQuestions(source.filter(q => q.verification_state === 'verified'))
-    const controller = new AbortController()
-    const timeoutId = window.setTimeout(() => controller.abort(), 120000)
-    try {
-      console.info('[commit] start', { mode, count: payload.length, url: expressUrl })
-      setActionStatus({ state: 'working', message: 'Committing...' })
-      const res = await fetch(`${expressUrl}/api/questions/bulk`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', ...authHeaders() },
-        body: JSON.stringify({ questions: payload }),
-        signal: controller.signal
-      })
+      const payload = buildBulkPayload(source)
+      if (!payload.length || !currentBatch) {
+        alert('No verified questions to commit')
+        return
+      }
+      const verifiedSource = source.filter(q => q.verification_state === 'verified')
+      setLastValidationQuestions(verifiedSource)
+      const questionIds = verifiedSource.map(q => q.question_id).filter(Boolean)
+      const controller = new AbortController()
+      const timeoutId = window.setTimeout(() => controller.abort(), 120000)
+      try {
+        console.info('[commit] start', { mode, count: payload.length, url: EXPRESS_URL })
+        setActionStatus({ state: 'working', message: 'Committing...' })
+        const res = await apiFetch(`${EXPRESS_URL}/api/questions/bulk`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', ...authHeaders() },
+          body: JSON.stringify({ questions: payload, chunkSize: 100 }),
+          signal: controller.signal
+        })
       console.info('[commit] response', { status: res.status })
       if (!res.ok) {
         const msg = await res.text()
@@ -1856,20 +2014,21 @@ function ReviewApp({ bootToken, bootUser, showTitle = true, onLogout }: ReviewAp
       setValidationResult(normalized)
       const errors = Array.isArray(normalized.errors) ? normalized.errors : []
       setValidationErrors(errors)
-      const sourceQuestions = source.filter(q => q.verification_state === 'verified')
-      const failedIds = new Set<string>()
-      const duplicateIds = new Set<string>()
-      for (const err of errors) {
-        const idx = typeof err?.index === 'number' ? err.index : -1
-        const q = idx >= 0 ? sourceQuestions[idx] : null
-        if (q?.question_id) {
+        const sourceQuestions = verifiedSource
+        const failedIds = new Set<string>()
+        const duplicateIds = new Set<string>()
+        for (const err of errors) {
+          const directId = (err as any)?.question_id || (err as any)?.questionId
+          const idx = typeof (err as any)?.index === 'number' ? (err as any).index : -1
+          const q = idx >= 0 ? sourceQuestions[idx] : null
+          const targetId = directId || q?.question_id
+          if (!targetId) continue
           if ((err as any)?.reason === 'DUPLICATE_IN_DB') {
-            duplicateIds.add(q.question_id)
+            duplicateIds.add(targetId)
           } else {
-            failedIds.add(q.question_id)
+            failedIds.add(targetId)
           }
         }
-      }
       const validIds = new Set<string>()
       for (const q of sourceQuestions) {
         if (q?.question_id && !failedIds.has(q.question_id) && !duplicateIds.has(q.question_id)) {
@@ -2032,6 +2191,55 @@ function ReviewApp({ bootToken, bootUser, showTitle = true, onLogout }: ReviewAp
     .filter((q: Question) => (!filterMissingAssets ? true : hasMissingAssets(q)))
     .sort((a: Question, b: Question) => (a.source_page || 0) - (b.source_page || 0))
 
+  const pageImagesByPage = (() => {
+    const assets = draft?.image_assets || {}
+    const map: Record<number, { id: string; filename: string }[]> = {}
+    Object.entries(assets).forEach(([key, asset]: any) => {
+      if (!asset || !asset.filename) return
+      const sp = asset.source_page
+      if (!Number.isFinite(sp)) return
+      if (!map[sp]) map[sp] = []
+      map[sp].push({ id: key, filename: asset.filename })
+    })
+    return map
+  })()
+
+  useEffect(() => {
+    const count = filteredQuestions.length
+    if (count > 0 && prevQuestionsCountRef.current === 0) {
+      questionsAnchorRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+    }
+    prevQuestionsCountRef.current = count
+  }, [filteredQuestions.length])
+
+  const currentBatchInfo = currentBatch ? batches.find(b => b.batch_id === currentBatch) : undefined
+  const totalQuestionsKnown = currentBatchInfo?.total_questions ?? draft?.total_questions ?? 0
+  const loadedQuestionsCount = (allQuestions || draft?.questions || []).length
+  const hasHiddenQuestions = totalQuestionsKnown > 0 && filteredQuestions.length === 0
+
+  useEffect(() => {
+    if (!currentBatch || autoLoadAllRef.current) return
+    if (totalQuestionsKnown > loadedQuestionsCount && filteredQuestions.length === 0 && !allQuestions) {
+      autoLoadAllRef.current = true
+      setUiNotice(`Questions exist in this batch (${totalQuestionsKnown}). Loading all pages...`)
+      loadAllQuestions(currentBatch).finally(() => {
+        setUiNotice('All pages loaded.')
+      })
+    }
+  }, [currentBatch, totalQuestionsKnown, loadedQuestionsCount, filteredQuestions.length, allQuestions])
+
+  useEffect(() => {
+    if (!currentBatch || autoLoadAllRef.current) return
+    if (!currentBatchInfo || currentBatchInfo.status !== 'done') return
+    if (totalQuestionsKnown > loadedQuestionsCount && !allQuestions) {
+      autoLoadAllRef.current = true
+      setUiNotice(`Batch complete (${totalQuestionsKnown} questions). Loading all pages...`)
+      loadAllQuestions(currentBatch).finally(() => {
+        setUiNotice('All pages loaded.')
+      })
+    }
+  }, [currentBatch, currentBatchInfo?.status, totalQuestionsKnown, loadedQuestionsCount, allQuestions])
+
   const stats = {
     total: questionsForView.length || 0,
     verified: questionsForView.filter((q: Question) => q.verification_state === 'verified').length || 0,
@@ -2059,9 +2267,50 @@ function ReviewApp({ bootToken, bootUser, showTitle = true, onLogout }: ReviewAp
       { selector: '[data-tour="pagination"]', title: 'Pages', body: 'Use the page selector to review one source_page at a time.' },
       { selector: '[data-tour="actions"]', title: 'Validate + Commit', body: 'Validate checks required fields. Commit sends verified questions to DB.' },
       { selector: '[data-tour="bulk-meta"]', title: 'Bulk Metadata', body: 'Apply subject/chapter/topic, difficulty, and question type in bulk.' },
-      { selector: '[data-tour="answer-key"]', title: 'Answer Key', body: 'Paste or upload keys, then apply to page or range.' },
       { selector: '[data-tour="filters"]', title: 'Filters', body: 'Filter by pending/verified/failed after validation.' }
     ]
+  }
+
+  function parseTimestamp(ts?: string): number | null {
+    if (!ts) return null
+    const hasTz = /[zZ]|[+-]\d{2}:?\d{2}$/.test(ts)
+    const safe = hasTz ? ts : `${ts}Z`
+    const t = Date.parse(safe)
+    return Number.isFinite(t) ? t : null
+  }
+
+  function formatElapsed(start?: string) {
+    const t = parseTimestamp(start)
+    if (!t) return ''
+    const diff = Math.max(0, Math.floor((nowTs - t) / 1000))
+    const h = Math.floor(diff / 3600)
+    const m = Math.floor((diff % 3600) / 60)
+    const s = diff % 60
+    if (h) return `${h}h ${m}m ${s}s`
+    if (m) return `${m}m ${s}s`
+    return `${s}s`
+  }
+
+  function formatIstTime(ts?: string) {
+    const t = parseTimestamp(ts)
+    if (!t) return ''
+    return new Date(t).toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' })
+  }
+
+  function formatEta(elapsedSec: number, pagesDone?: number | null, totalPages?: number | null) {
+    if (!pagesDone || !totalPages || pagesDone <= 0) return ''
+    const rate = elapsedSec / pagesDone
+    const remaining = Math.max(0, Math.round(rate * (totalPages - pagesDone)))
+    return formatDuration(remaining)
+  }
+
+  function formatDuration(totalSec: number) {
+    const h = Math.floor(totalSec / 3600)
+    const m = Math.floor((totalSec % 3600) / 60)
+    const s = totalSec % 60
+    if (h) return `${h}h ${m}m ${s}s`
+    if (m) return `${m}m ${s}s`
+    return `${s}s`
   }
 
   function closeTour() {
@@ -2132,6 +2381,11 @@ function ReviewApp({ bootToken, bootUser, showTitle = true, onLogout }: ReviewAp
       const q = idx >= 0 ? lastValidationQuestions[idx] : null
       const info = formatValidationError(e, q)
       return [
+        q?.question_id ?? '',
+        q?.subject_name ?? '',
+        q?.chapter_name ?? '',
+        q?.topic_name ?? '',
+        q?.exam_type ?? '',
         info.page ?? '',
         info.qnum ?? '',
         info.field,
@@ -2139,7 +2393,7 @@ function ReviewApp({ bootToken, bootUser, showTitle = true, onLogout }: ReviewAp
         info.message
       ]
     })
-    const header = ['page', 'question_number', 'field', 'reason', 'message']
+    const header = ['question_id', 'subject', 'chapter', 'topic', 'exam_type', 'page', 'question_number', 'field', 'reason', 'message']
     const csv = [header, ...rows].map(r => r.map(v => `"${String(v).replace(/"/g, '""')}"`).join(',')).join('\n')
     const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' })
     const url = URL.createObjectURL(blob)
@@ -2155,24 +2409,14 @@ function ReviewApp({ bootToken, bootUser, showTitle = true, onLogout }: ReviewAp
   if (!isLoggedIn) {
     return (
       <div style={{ minHeight: '100vh', background: '#0f0f1a', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-        <div style={{ background: 'rgba(255,255,255,0.03)', padding: '48px', borderRadius: '16px', border: '1px solid rgba(255,255,255,0.08)', width: '100%', maxWidth: '400px' }}>
-          <h1 style={{ marginBottom: '32px', textAlign: 'center' }}>DocQuest Review</h1>
-          <form onSubmit={(e) => {
-            e.preventDefault()
-            const form = e.target as HTMLFormElement
-            const user = (form.elements.namedItem('username') as HTMLInputElement).value
-            const pass = (form.elements.namedItem('password') as HTMLInputElement).value
-            handleLogin(user, pass)
-          }}>
-            <input name="username" type="text" placeholder="Username" />
-            <input name="password" type="password" placeholder="Password" />
-            {loginError && <div style={{ marginBottom: '16px', color: '#f87171', textAlign: 'center' }}>{loginError}</div>}
-            <button type="submit">Login</button>
-          </form>
-          <div style={{ marginTop: '16px', textAlign: 'center', color: '#888', fontSize: '12px' }}>
-            <div>admin / admin123</div>
-            <div>reviewer / review123</div>
-          </div>
+        <div style={{ background: 'rgba(255,255,255,0.03)', padding: '40px', borderRadius: '16px', border: '1px solid rgba(255,255,255,0.08)', width: '100%', maxWidth: '420px', textAlign: 'center' }}>
+          <h1 style={{ marginBottom: '16px' }}>Login required</h1>
+          <p style={{ color: '#9ca3af', marginBottom: '20px' }}>Please login from the main page to continue.</p>
+          {onLogout && (
+            <button onClick={onLogout} style={{ padding: '10px 20px', background: '#3b82f6', border: 'none', borderRadius: '8px', color: '#fff', cursor: 'pointer' }}>
+              Back to login
+            </button>
+          )}
         </div>
       </div>
     )
@@ -2322,6 +2566,7 @@ function ReviewApp({ bootToken, bootUser, showTitle = true, onLogout }: ReviewAp
                 question={q}
                 isEditing={committedEditId === q.id}
                 editValue={committedEdit}
+                difficultyTypes={difficultyTypes}
                 onEdit={() => startEditCommitted(q)}
                 onCancel={cancelEditCommitted}
                 onChange={setCommittedEdit}
@@ -2364,17 +2609,27 @@ function ReviewApp({ bootToken, bootUser, showTitle = true, onLogout }: ReviewAp
                 >
                   <span className="batch-id">{b.batch_id}</span>
                   <span className="batch-meta">{formatBatchMeta(b)}</span>
+                  {b.stage_timings_seconds && (
+                    <span className="batch-timings">
+                      {formatStageTimings(b.stage_timings_seconds)}
+                    </span>
+                  )}
                   {b.status !== 'done' && (
                     <button
                       className="btn small"
                       style={{ marginLeft: 'auto' }}
-                      onClick={e => {
+                      disabled={startingBatchId === b.batch_id}
+                      onClick={async e => {
                         e.stopPropagation()
-                        dispatchBatch(b)
+                        setStartingBatchId(b.batch_id)
+                        await dispatchBatch(b)
+                        setStartingBatchId(null)
                       }}
                       title={isPausedStatus(b.status) ? 'Resume processing for this batch.' : 'Start processing this batch.'}
                     >
-                      {isPausedStatus(b.status) ? 'Resume' : 'Start'}
+                      {startingBatchId === b.batch_id
+                        ? (isPausedStatus(b.status) ? 'Resuming...' : 'Starting...')
+                        : (isPausedStatus(b.status) ? 'Resume' : 'Start')}
                     </button>
                   )}
                   <button
@@ -2393,6 +2648,20 @@ function ReviewApp({ bootToken, bootUser, showTitle = true, onLogout }: ReviewAp
           </aside>
 
           <main className="content">
+            {(uiNotice || uiError) && (
+              <div className={`status-banner ${uiError ? 'error' : 'notice'}`}>
+                <span>{uiError || uiNotice}</span>
+                <button
+                  className="btn small"
+                  onClick={() => {
+                    setUiError('')
+                    setUiNotice('')
+                  }}
+                >
+                  Dismiss
+                </button>
+              </div>
+            )}
             <div className="actions-panel" data-tour="actions">
               <div className="actions-row">
                 <span className="actions-title">Actions</span>
@@ -2427,11 +2696,284 @@ function ReviewApp({ bootToken, bootUser, showTitle = true, onLogout }: ReviewAp
                   Auto-mark duplicates
                 </label>
               </div>
-              <div className="actions-row">
-                <span className="actions-meta">Bulk actions apply to Selected (checkboxes), Range (question #), or All.</span>
-              </div>
-              <div className="actions-row actions-split">
-                <div className="actions-left">
+              <details className="action-section" open>
+                <summary className="section-title">Step 1 — Choose a target</summary>
+                <div className="section-desc">Pick a Question # range or select checkboxes. If you skip this, actions apply to all.</div>
+                <div className="actions-row actions-split">
+                  <div className="actions-left">
+                    <input
+                      type="number"
+                      placeholder="Question # start"
+                      value={bulkRangeStart}
+                      onChange={e => setBulkRangeStart(e.target.value)}
+                    />
+                    <input
+                      type="number"
+                      placeholder="Question # end"
+                      value={bulkRangeEnd}
+                      onChange={e => setBulkRangeEnd(e.target.value)}
+                    />
+                  </div>
+                  <div className="actions-groups">
+                    <div className="actions-group">
+                      <div className="actions-group-title">Range actions</div>
+                      <div className="actions-group-body">
+                        <button
+                          className="btn small"
+                          onClick={() => verifyBulk('range')}
+                          disabled={actionStatus.state === 'working'}
+                          title="Verify questions inside the Question # range."
+                        >
+                          Verify range
+                        </button>
+                        <button
+                          className="btn small"
+                          onClick={() => validateBulk('range')}
+                          disabled={actionStatus.state === 'working'}
+                          title="Validate questions inside the Question # range."
+                        >
+                          Validate range
+                        </button>
+                        <button
+                          className="btn small"
+                          onClick={() => commitBulk('range')}
+                          disabled={actionStatus.state === 'working'}
+                          title="Commit questions inside the Question # range to the database."
+                        >
+                          Commit range
+                        </button>
+                      </div>
+                      <div className="actions-group-note">Uses Question # start/end.</div>
+                    </div>
+                    <div className="actions-group">
+                      <div className="actions-group-title">Selected actions</div>
+                      <div className="actions-group-body">
+                        <button
+                          className="btn small"
+                          onClick={() => verifyBulk('selected')}
+                          disabled={actionStatus.state === 'working' || selectedCount === 0}
+                          title="Verify only the checked questions."
+                        >
+                          Verify selected
+                        </button>
+                        <button
+                          className="btn small"
+                          onClick={() => validateBulk('selected')}
+                          disabled={actionStatus.state === 'working' || selectedCount === 0}
+                          title="Validate only the checked questions."
+                        >
+                          Validate selected
+                        </button>
+                        <button
+                          className="btn small"
+                          onClick={() => commitBulk('selected')}
+                          disabled={actionStatus.state === 'working' || selectedCount === 0}
+                          title="Commit only the checked questions."
+                        >
+                          Commit selected
+                        </button>
+                      </div>
+                      <div className="actions-group-note">Uses selected checkboxes.</div>
+                    </div>
+                  </div>
+                </div>
+              </details>
+              <details className="action-section" open>
+                <summary className="section-title">Step 2 — Batch actions (safe defaults)</summary>
+                <div className="section-desc">Use these when you’re ready to validate/commit the whole batch.</div>
+                <div className="actions-row">
+                  <button className="btn small" onClick={() => validateBulk('all')} disabled={actionStatus.state === 'working'} title="Validate every verified question in the batch.">
+                    Validate all
+                  </button>
+                  <button className="btn small" onClick={() => commitBulk('all')} disabled={actionStatus.state === 'working'} title="Commit all verified questions in the batch.">
+                    Commit all
+                  </button>
+                  <button className="btn small" onClick={() => currentBatch && loadAllQuestions(currentBatch)} disabled={actionStatus.state === 'working' || !currentBatch || allLoading} title="Load all pages for search and bulk range actions.">
+                    {allLoading ? 'Loading pages...' : 'Load all pages'}
+                  </button>
+                  <button className="btn small" onClick={verifyAllValid} disabled={actionStatus.state === 'working'} title="Verify every question that passes local checks.">
+                    Verify all valid
+                  </button>
+                  <button className="btn small" onClick={addQuestion} disabled={actionStatus.state === 'working' || !currentBatch} title="Add a new empty question to this batch.">
+                    Add question
+                  </button>
+                </div>
+              </details>
+              <details className="action-section" open>
+                <summary className="section-title">Step 3 — Fix failed items only</summary>
+                <div className="section-desc">Retry only the failed set after you review them.</div>
+                <div className="actions-row">
+                  <button className="btn small" onClick={() => selectFailedAndRun('validate')} disabled={actionStatus.state === 'working' || failedCount === 0} title="Retry validation for only the failed questions.">
+                    Validate failed only
+                  </button>
+                  <button className="btn small" onClick={() => selectFailedAndRun('commit')} disabled={actionStatus.state === 'working' || failedCount === 0} title="Commit only the failed questions after review.">
+                    Commit failed only
+                  </button>
+                  {validationErrors.length > 0 && (
+                    <button className="btn small" onClick={downloadValidationErrors} title="Download CSV of validation failures.">
+                      Download failed CSV
+                    </button>
+                  )}
+                </div>
+              </details>
+            </div>
+            <div className="bulk-metadata" data-tour="bulk-meta">
+              {uiError && <div className="committed-error">{uiError}</div>}
+              {uiNotice && <div className="committed-meta">{uiNotice}</div>}
+              <details className="bulk-section" open>
+                <summary className="section-title">Step 1 — Upload Answer Sheet</summary>
+                <div className="section-desc">Upload the answer key sheet. It will auto-map answers for this batch.</div>
+                <div className="bulk-row">
+                  <label className="upload-label answer-upload" title="Upload an answer key sheet to auto-map answers.">
+                    <span>Upload Answer Sheet</span>
+                    <input
+                      type="file"
+                      accept=".png,.jpg,.jpeg,.pdf"
+                      onChange={e => {
+                        const f = e.target.files?.[0]
+                        if (f) uploadAnswerKeyFile(f)
+                      }}
+                    />
+                  </label>
+                  {answerKeyStatus && <div className="answer-status">{answerKeyStatus}</div>}
+                  {answerKeyDetected.count > 0 && (
+                    <div className="answer-status">
+                      Detected {answerKeyDetected.count} answers
+                      {answerKeyDetected.min !== null && answerKeyDetected.max !== null
+                        ? ` (Q${answerKeyDetected.min}–Q${answerKeyDetected.max})`
+                        : ''}
+                    </div>
+                  )}
+                </div>
+                <div className="bulk-row">
+                  <div className="field-stack">
+                    <label className="field-label">Start page</label>
+                    <input
+                      type="number"
+                      placeholder="e.g. 1"
+                      value={answerKeyStartPage}
+                      onChange={e => setAnswerKeyStartPage(e.target.value)}
+                    />
+                    <div className="field-help">First page that contains the answer key.</div>
+                  </div>
+                  <div className="field-stack">
+                    <label className="field-label">End page</label>
+                    <input
+                      type="number"
+                      placeholder="e.g. 6"
+                      value={answerKeyMaxPages}
+                      onChange={e => setAnswerKeyMaxPages(e.target.value)}
+                    />
+                    <div className="field-help">Last page that contains the answer key.</div>
+                  </div>
+                  <div className="field-stack">
+                    <label className="field-label">Start question #</label>
+                    <input
+                      type="number"
+                      placeholder="e.g. 1"
+                      value={answerKeyMinQ}
+                      onChange={e => setAnswerKeyMinQ(e.target.value)}
+                    />
+                    <div className="field-help">First question number in the key.</div>
+                  </div>
+                  <div className="field-stack">
+                    <label className="field-label">End question #</label>
+                    <input
+                      type="number"
+                      placeholder="e.g. 200"
+                      value={answerKeyMaxQ}
+                      onChange={e => setAnswerKeyMaxQ(e.target.value)}
+                    />
+                    <div className="field-help">Last question number in the key.</div>
+                  </div>
+                </div>
+                <details className="advanced-details">
+                  <summary>Advanced (OCR tuning)</summary>
+                  <div className="bulk-row">
+                    <div className="field-stack">
+                      <label className="field-label">OCR DPI</label>
+                      <input
+                        type="number"
+                        placeholder="300"
+                        value={answerKeyOcrDpi}
+                        onChange={e => setAnswerKeyOcrDpi(e.target.value)}
+                      />
+                      <div className="field-help">Leave at 300 unless OCR misses answers.</div>
+                    </div>
+                  </div>
+                </details>
+              </details>
+              <details className="bulk-section" open>
+                <summary className="section-title">Step 2 — Add Subject / Chapter / Topic</summary>
+                <div className="section-desc">Fill once, then apply to all or only missing fields.</div>
+                <div className="bulk-row">
+                  <input
+                    type="text"
+                    placeholder="Subject"
+                    value={bulkSubject}
+                    onChange={e => setBulkSubject(e.target.value)}
+                  />
+                  <input
+                    type="text"
+                    placeholder="Chapter"
+                    value={bulkChapter}
+                    onChange={e => setBulkChapter(e.target.value)}
+                  />
+                  <input
+                    type="text"
+                    placeholder="Topic"
+                    value={bulkTopic}
+                    onChange={e => setBulkTopic(e.target.value)}
+                  />
+                  <select value={bulkExamType} onChange={e => setBulkExamType(e.target.value)}>
+                    <option value="">Exam type</option>
+                    <option value="neet">NEET</option>
+                    <option value="jee">JEE</option>
+                    <option value="jee advanced">JEE Advanced</option>
+                  </select>
+                  <input
+                    type="text"
+                    placeholder="Batch tag"
+                    value={bulkTag}
+                    onChange={e => setBulkTag(e.target.value)}
+                  />
+                  <button className="btn small" disabled={bulkBusy} onClick={() => applyBulkMetadata('all')} title="Apply Subject/Chapter/Topic/Exam/Tag to every question.">
+                    Apply to all
+                  </button>
+                  <button className="btn small" disabled={bulkBusy} onClick={() => applyBulkMetadata('missing')} title="Apply metadata only where fields are missing.">
+                    Apply to missing
+                  </button>
+                </div>
+              </details>
+              <details className="bulk-section" open>
+                <summary className="section-title">Step 3 — Save a template (optional)</summary>
+                <div className="section-desc">Use this if you reuse the same Subject/Chapter/Topic again.</div>
+                <div className="bulk-row">
+                  <input
+                    type="text"
+                    placeholder="Template name"
+                    value={bulkPresetName}
+                    onChange={e => setBulkPresetName(e.target.value)}
+                  />
+                  <button className="btn small" disabled={bulkBusy} onClick={savePreset} title="Save the current metadata as a template.">
+                    Save template
+                  </button>
+                  {bulkPresets.map(preset => (
+                    <div key={preset.name} style={{ display: 'inline-flex', gap: '6px' }}>
+                      <button className="btn small" onClick={() => applyPreset(preset)} title={`Apply preset ${preset.name}.`}>
+                        {preset.name}
+                      </button>
+                      <button className="btn small" onClick={() => removePreset(preset.name)} title={`Delete preset ${preset.name}.`}>
+                        ×
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              </details>
+              <details className="bulk-section" open>
+                <summary className="section-title">Step 4 — Apply to a Question # range (optional)</summary>
+                <div className="section-desc">Use this when you only want a specific block of questions.</div>
+                <div className="bulk-row">
                   <input
                     type="number"
                     placeholder="Question # start"
@@ -2444,477 +2986,193 @@ function ReviewApp({ bootToken, bootUser, showTitle = true, onLogout }: ReviewAp
                     value={bulkRangeEnd}
                     onChange={e => setBulkRangeEnd(e.target.value)}
                   />
+                  <button className="btn small" disabled={bulkBusy} onClick={() => applyBulkMetadata('range')} title="Apply metadata to the Question # range.">
+                    Apply to range (question #)
+                  </button>
+                  <button
+                    className="btn small"
+                    onClick={() => setSelectedIds(new Set(filteredQuestions.map((q: Question) => q.question_id)))}
+                    title="Select all questions currently visible on screen."
+                  >
+                    Select current page
+                  </button>
+                  <button className="btn small" onClick={() => setSelectedIds(new Set())} title="Clear all selected questions.">
+                    Clear selection
+                  </button>
                 </div>
-                <div className="actions-groups">
-                  <div className="actions-group">
-                    <div className="actions-group-title">Range actions</div>
-                    <div className="actions-group-body">
-                      <button
-                        className="btn small"
-                        onClick={() => verifyBulk('range')}
-                        disabled={actionStatus.state === 'working'}
-                        title="Verify questions inside the Question # range."
-                      >
-                        Verify range
-                      </button>
-                      <button
-                        className="btn small"
-                        onClick={() => validateBulk('range')}
-                        disabled={actionStatus.state === 'working'}
-                        title="Validate questions inside the Question # range."
-                      >
-                        Validate range
-                      </button>
-                      <button
-                        className="btn small"
-                        onClick={() => commitBulk('range')}
-                        disabled={actionStatus.state === 'working'}
-                        title="Commit questions inside the Question # range to the database."
-                      >
-                        Commit range
-                      </button>
-                    </div>
-                    <div className="actions-group-note">Uses the Question # start/end fields.</div>
-                  </div>
-                  <div className="actions-group">
-                    <div className="actions-group-title">Selected actions</div>
-                    <div className="actions-group-body">
-                      <button
-                        className="btn small"
-                        onClick={() => verifyBulk('selected')}
-                        disabled={actionStatus.state === 'working' || selectedCount === 0}
-                        title="Verify only the checked questions."
-                      >
-                        Verify selected
-                      </button>
-                      <button
-                        className="btn small"
-                        onClick={() => validateBulk('selected')}
-                        disabled={actionStatus.state === 'working' || selectedCount === 0}
-                        title="Validate only the checked questions."
-                      >
-                        Validate selected
-                      </button>
-                      <button
-                        className="btn small"
-                        onClick={() => commitBulk('selected')}
-                        disabled={actionStatus.state === 'working' || selectedCount === 0}
-                        title="Commit only the checked questions."
-                      >
-                        Commit selected
-                      </button>
-                    </div>
-                    <div className="actions-group-note">Uses the selected checkboxes.</div>
-                  </div>
+              </details>
+              <div ref={questionsAnchorRef} className="bulk-section">
+                <div className="section-title">Questions ({filteredQuestions.length} loaded)</div>
+                <div className="section-desc">Questions appear here as they are processed. Use the page selector to navigate.</div>
+                <div className="filters" style={{ marginTop: '10px' }}>
+                  <span className="actions-meta">Source pages: {sourcePages.length}</span>
+                  <select
+                    value={sourcePage ?? ''}
+                    onChange={e => {
+                      const value = e.target.value
+                      userSetPageRef.current = true
+                      setSourcePage(value ? Number(value) : null)
+                    }}
+                  >
+                    <option value="">All pages</option>
+                    {sourcePages.map(p => (
+                      <option key={p} value={p}>Page {p}</option>
+                    ))}
+                  </select>
+                  <button
+                    className="btn small"
+                    onClick={() => {
+                      if (!sourcePages.length) return
+                      const idx = sourcePage ? sourcePages.indexOf(sourcePage) : 0
+                      const next = sourcePages[Math.max(0, idx - 1)]
+                      userSetPageRef.current = true
+                      setSourcePage(next)
+                    }}
+                    disabled={!sourcePages.length}
+                  >
+                    Prev page
+                  </button>
+                  <button
+                    className="btn small"
+                    onClick={() => {
+                      if (!sourcePages.length) return
+                      const idx = sourcePage ? sourcePages.indexOf(sourcePage) : -1
+                      const next = sourcePages[Math.min(sourcePages.length - 1, idx + 1)]
+                      userSetPageRef.current = true
+                      setSourcePage(next)
+                    }}
+                    disabled={!sourcePages.length}
+                  >
+                    Next page
+                  </button>
+                  <button className="btn small" onClick={() => currentBatch && loadAllQuestions(currentBatch)} disabled={!currentBatch || allLoading}>
+                    {allLoading ? 'Loading...' : 'Load all pages'}
+                  </button>
                 </div>
               </div>
-              <div className="actions-row">
-                <button className="btn small" onClick={() => validateBulk('all')} disabled={actionStatus.state === 'working'} title="Validate every verified question in the batch.">
-                  Validate all
+              <div className="filters" data-tour="filters">
+                <button className={`filter-pill ${filter === 'all' ? 'active' : ''}`} onClick={() => setFilter('all')}>
+                  All
                 </button>
-                <button className="btn small" onClick={() => commitBulk('all')} disabled={actionStatus.state === 'working'} title="Commit all verified questions in the batch.">
-                  Commit all
+                <button className={`filter-pill ${filter === 'pending' ? 'active' : ''}`} onClick={() => setFilter('pending')}>
+                  Pending
                 </button>
-                <button className="btn small" onClick={() => currentBatch && loadAllQuestions(currentBatch)} disabled={actionStatus.state === 'working' || !currentBatch || allLoading} title="Load all pages for search and bulk range actions.">
-                  {allLoading ? 'Loading pages...' : 'Load all pages'}
+                <button className={`filter-pill ${filter === 'verified' ? 'active' : ''}`} onClick={() => setFilter('verified')}>
+                  Verified
                 </button>
-                <button className="btn small" onClick={verifyAllValid} disabled={actionStatus.state === 'working'} title="Verify every question that passes local checks.">
-                  Verify all valid
+                <button className={`filter-pill ${validationFilter === 'failed' ? 'active' : ''}`} onClick={() => setValidationFilter('failed')}>
+                  Failed
                 </button>
-                <button className="btn small" onClick={addQuestion} disabled={actionStatus.state === 'working' || !currentBatch} title="Add a new empty question to this batch.">
-                  Add question
+                <button className={`filter-pill ${validationFilter === 'valid' ? 'active' : ''}`} onClick={() => setValidationFilter('valid')}>
+                  Valid
                 </button>
-              </div>
-              <div className="actions-row">
-                <button className="btn small" onClick={() => selectFailedAndRun('validate')} disabled={actionStatus.state === 'working' || failedCount === 0} title="Retry validation for only the failed questions.">
-                  Validate failed only
+                <button className={`filter-pill ${validationFilter === 'all' ? 'active' : ''}`} onClick={() => setValidationFilter('all')}>
+                  Validation: All
                 </button>
-                <button className="btn small" onClick={() => selectFailedAndRun('commit')} disabled={actionStatus.state === 'working' || failedCount === 0} title="Commit only the failed questions after review.">
-                  Commit failed only
-                </button>
-              </div>
-            </div>
-            <div className="bulk-metadata" data-tour="bulk-meta">
-              {uiError && <div className="committed-error">{uiError}</div>}
-              {uiNotice && <div className="committed-meta">{uiNotice}</div>}
-              <div className="bulk-row">
-                <span className="actions-meta">Tip: Fill Subject/Chapter/Topic once, then Apply to all or missing.</span>
-              </div>
-              <div className="bulk-row">
-                <input
-                  type="text"
-                  placeholder="Subject"
-                  value={bulkSubject}
-                  onChange={e => setBulkSubject(e.target.value)}
-                />
-                <input
-                  type="text"
-                  placeholder="Chapter"
-                  value={bulkChapter}
-                  onChange={e => setBulkChapter(e.target.value)}
-                />
-                <input
-                  type="text"
-                  placeholder="Topic"
-                  value={bulkTopic}
-                  onChange={e => setBulkTopic(e.target.value)}
-                />
-                <select value={bulkExamType} onChange={e => setBulkExamType(e.target.value)}>
-                  <option value="">Exam type</option>
+                <label className="filter-pill" style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
+                  <input
+                    type="checkbox"
+                    checked={filterMissingAssets}
+                    onChange={e => setFilterMissingAssets(e.target.checked)}
+                  />
+                  Missing assets
+                </label>
+                <select
+                  value={filterExamType}
+                  onChange={e => setFilterExamType(e.target.value)}
+                >
+                  <option value="">All exams</option>
                   <option value="neet">NEET</option>
                   <option value="jee">JEE</option>
                   <option value="jee advanced">JEE Advanced</option>
                 </select>
-                <input
-                  type="text"
-                  placeholder="Batch tag"
-                  value={bulkTag}
-                  onChange={e => setBulkTag(e.target.value)}
-                />
-                <button className="btn small" disabled={bulkBusy} onClick={() => applyBulkMetadata('all')} title="Apply Subject/Chapter/Topic/Exam/Tag to every question.">
-                  Apply to all
-                </button>
-                <button className="btn small" disabled={bulkBusy} onClick={() => applyBulkMetadata('missing')} title="Apply metadata only where fields are missing.">
-                  Apply to missing
-                </button>
               </div>
-              <div className="bulk-row">
-                <input
-                  type="text"
-                  placeholder="Preset name"
-                  value={bulkPresetName}
-                  onChange={e => setBulkPresetName(e.target.value)}
-                />
-                <button className="btn small" disabled={bulkBusy} onClick={savePreset} title="Save the current metadata as a preset.">
-                  Save preset
-                </button>
-                {bulkPresets.map(preset => (
-                  <div key={preset.name} style={{ display: 'inline-flex', gap: '6px' }}>
-                    <button className="btn small" onClick={() => applyPreset(preset)} title={`Apply preset ${preset.name}.`}>
-                      {preset.name}
-                    </button>
-                    <button className="btn small" onClick={() => removePreset(preset.name)} title={`Delete preset ${preset.name}.`}>
-                      ×
-                    </button>
+              {hasHiddenQuestions && (
+                <div className="status-banner notice" style={{ marginTop: '12px' }}>
+                  <span>Questions exist but are hidden by filters. Click “All” or choose a page.</span>
+                  <button className="btn small" onClick={() => { setFilter('all'); setValidationFilter('all'); setFilterExamType(''); setFilterMissingAssets(false); setSourcePage(null); }}>
+                    Show all
+                  </button>
+                </div>
+              )}
+              <div className="questions">
+                {filteredQuestions.length === 0 ? (
+                  <div style={{ color: '#94a3b8', padding: '12px 4px' }}>
+                    No questions yet. This batch is still processing.
                   </div>
-                ))}
+                ) : (
+                  filteredQuestions.map((q: Question, idx: number) => {
+                    const pageImages = pageImagesByPage[q.source_page] || []
+                    return (
+                      <QuestionCard
+                        key={q.question_id}
+                        question={q}
+                        index={idx}
+                        batchId={currentBatch || ''}
+                        difficultyTypes={difficultyTypes}
+                        assetUrl={assetUrl}
+                        onUploadAsset={uploadAsset}
+                        onVerify={() => verifyQuestion(q.question_id)}
+                        onReject={() => rejectQuestion(q.question_id)}
+                        onUpdate={(patch) => updateQuestion(q.question_id, patch)}
+                        onToggleCorrect={(letter) => toggleCorrect(q.question_id, letter)}
+                        onApplyAnswer={() => applyAnswerToQuestion(q)}
+                        onDelete={() => deleteDraftQuestion(q.question_id)}
+                        selected={selectedIds.has(q.question_id)}
+                        onToggleSelect={() => {
+                          setSelectedIds(prev => {
+                            const next = new Set(prev)
+                            if (next.has(q.question_id)) {
+                              next.delete(q.question_id)
+                            } else {
+                              next.add(q.question_id)
+                            }
+                            return next
+                          })
+                        }}
+                        pageImages={pageImages}
+                      />
+                    )
+                  })
+                )}
               </div>
-              <div className="bulk-row">
-                <input
-                  type="number"
-                  placeholder="Question # start"
-                  value={bulkRangeStart}
-                  onChange={e => setBulkRangeStart(e.target.value)}
-                />
-                <input
-                  type="number"
-                  placeholder="Question # end"
-                  value={bulkRangeEnd}
-                  onChange={e => setBulkRangeEnd(e.target.value)}
-                />
-                <button className="btn small" disabled={bulkBusy} onClick={() => applyBulkMetadata('range')} title="Apply metadata to the Question # range.">
-                  Apply to range
-                </button>
-                <button
-                  className="btn small"
-                  onClick={() => setSelectedIds(new Set(filteredQuestions.map((q: Question) => q.question_id)))}
-                  title="Select all questions currently visible on screen."
-                >
-                  Select current page
-                </button>
-                <button className="btn small" onClick={() => setSelectedIds(new Set())} title="Clear all selected questions.">
-                  Clear selection
-                </button>
-              </div>
-              <div className="bulk-row" data-tour="answer-key">
-                <label className="upload-label answer-upload">
-                  <span>Answer Upload</span>
-                  <input
-                    type="file"
-                    accept=".png,.jpg,.jpeg,.pdf"
-                    onChange={e => {
-                      const f = e.target.files?.[0]
-                      if (f) uploadAnswerKeyFile(f)
-                    }}
-                  />
-                </label>
-                <input
-                  type="number"
-                  min="1"
-                  max="20"
-                  placeholder="Key pages"
-                  value={answerKeyMaxPages}
-                  onChange={e => setAnswerKeyMaxPages(e.target.value)}
-                />
-                <input
-                  type="number"
-                  min="1"
-                  placeholder="Start page"
-                  value={answerKeyStartPage}
-                  onChange={e => setAnswerKeyStartPage(e.target.value)}
-                />
-                <input
-                  type="number"
-                  min="1"
-                  placeholder="Max Q"
-                  value={answerKeyMaxQ}
-                  onChange={e => setAnswerKeyMaxQ(e.target.value)}
-                />
-                <input
-                  type="number"
-                  min="150"
-                  max="450"
-                  placeholder="OCR DPI"
-                  value={answerKeyOcrDpi}
-                  onChange={e => setAnswerKeyOcrDpi(e.target.value)}
-                />
-                <input
-                  type="text"
-                  placeholder="Answer key (1.A 2.B 3.C)"
-                  value={bulkAnswerKey}
-                  onChange={e => setBulkAnswerKey(e.target.value)}
-                />
-                <input
-                  type="number"
-                  placeholder="Page"
-                  value={bulkAnswerPage}
-                  onChange={e => setBulkAnswerPage(e.target.value)}
-                />
-                <button className="btn small" disabled={bulkBusy} onClick={() => applyBulkAnswers('all')} title="Apply answers to every question.">
-                  Apply answers to all
-                </button>
-                <button className="btn small" disabled={bulkBusy} onClick={() => applyBulkAnswers('missing')} title="Apply answers only to questions with no answers.">
-                  Apply answers to missing
-                </button>
-                <button className="btn small" disabled={bulkBusy} onClick={() => applyBulkAnswers('range')} title="Apply answers to the Question # range.">
-                  Apply answers to range
-                </button>
-                <button className="btn small" disabled={bulkBusy} onClick={applyAnswersToPage} title="Apply answers only to the selected page.">
-                  Apply answers to page
-                </button>
-              </div>
-              {(answerKeyStatus || answerKeyPairs.length > 0) && (
-                <div className="bulk-row" style={{ alignItems: 'flex-start' }}>
-                  <div style={{ fontSize: '12px', color: '#9ca3af' }}>
-                    {answerKeyStatus}
-                  </div>
-                  {answerKeyPairs.length > 0 && (
-                    <div style={{ maxHeight: '120px', overflowY: 'auto', fontSize: '12px', color: '#cbd5f5' }}>
-                      {answerKeyPairs.slice(0, 100).map((p, idx) => (
-                        <div key={`${p.number}-${idx}`}>
-                          Q{p.number}: {p.answer}
-                        </div>
-                      ))}
-                      {answerKeyPairs.length > 100 && (
-                        <div>... {answerKeyPairs.length - 100} more</div>
-                      )}
+            </div>
+            {showValidation && (
+              <div className="validation-modal">
+                <div className="validation-card">
+                  <div className="validation-title">Validation Results</div>
+                  {validationResult && (
+                    <div className="validation-summary">
+                      <span>Valid: {validationResult.validCount ?? 0}</span>
+                      <span>Failed: {validationResult.failedCount ?? 0}</span>
+                      <span>Skipped: {validationResult.skippedCount ?? 0}</span>
                     </div>
                   )}
-                </div>
-              )}
-              <div className="bulk-row">
-                <input
-                  type="number"
-                  placeholder="Difficulty level"
-                  value={bulkLevel}
-                  onChange={e => setBulkLevel(e.target.value)}
-                />
-              <input
-                type="text"
-                placeholder="Difficulty type"
-                value={bulkDifficultyType}
-                onChange={e => setBulkDifficultyType(e.target.value)}
-              />
-                <button className="btn small" disabled={bulkBusy} onClick={() => applyBulkLevel('all')} title="Apply difficulty level to all questions.">
-                  Apply level to all
-                </button>
-                <button className="btn small" disabled={bulkBusy} onClick={() => applyBulkLevel('missing')} title="Apply difficulty level to only missing questions.">
-                  Apply level to missing
-                </button>
-                <button className="btn small" disabled={bulkBusy} onClick={() => applyBulkLevel('range')} title="Apply difficulty level to the Question # range.">
-                  Apply level to range
-                </button>
-                <button className="btn small" disabled={bulkBusy} onClick={() => applyBulkDifficultyType('all')} title="Apply difficulty type to all questions.">
-                  Apply type to all
-                </button>
-                <button className="btn small" disabled={bulkBusy} onClick={() => applyBulkDifficultyType('missing')} title="Apply difficulty type to only missing questions.">
-                  Apply type to missing
-                </button>
-              <button className="btn small" disabled={bulkBusy} onClick={() => applyBulkDifficultyType('range')} title="Apply difficulty type to the Question # range.">
-                Apply type to range
-              </button>
-              </div>
-            </div>
-            <div className="filters" data-tour="filters">
-              {['all', 'pending', 'verified'].map(f => (
-                <button key={f} className={filter === f ? 'active' : ''} onClick={() => setFilter(f)}>
-                  {f.charAt(0).toUpperCase() + f.slice(1)}
-                </button>
-              ))}
-              <select value={filterExamType} onChange={e => setFilterExamType(e.target.value)}>
-                <option value="">All exams</option>
-                <option value="neet">NEET</option>
-                <option value="jee">JEE</option>
-                <option value="jee advanced">JEE Advanced</option>
-              </select>
-              <label style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
-                <input
-                  type="checkbox"
-                  checked={filterMissingAssets}
-                  onChange={e => setFilterMissingAssets(e.target.checked)}
-                />
-                Missing assets
-              </label>
-            </div>
-            <div className="pagination" data-tour="pagination">
-              <button
-                className="btn small"
-                disabled={sourcePages.length === 0 || sourcePage === null || sourcePages.indexOf(sourcePage) <= 0}
-                onClick={() => {
-                  if (sourcePage === null) return
-                  const idx = sourcePages.indexOf(sourcePage)
-                  if (idx > 0) setSourcePage(sourcePages[idx - 1])
-                }}
-              >
-                Prev page
-              </button>
-              <span className="pagination-info">
-                Page {sourcePage || '?'} of {sourcePages.length || '?'} - {filteredQuestions.length} on page - {draft?.total_questions || 0} total{allLoading ? ' (loading pages...)' : ''}
-              </span>
-              <button
-                className="btn small"
-                disabled={sourcePages.length === 0 || sourcePage === null || sourcePages.indexOf(sourcePage) === sourcePages.length - 1}
-                onClick={() => {
-                  if (sourcePage === null) return
-                  const idx = sourcePages.indexOf(sourcePage)
-                  if (idx >= 0 && idx < sourcePages.length - 1) setSourcePage(sourcePages[idx + 1])
-                }}
-              >
-                Next page
-              </button>
-              <select
-                value={sourcePage || ''}
-                onChange={e => setSourcePage(Number(e.target.value) || null)}
-              >
-                <option value="">Select page</option>
-                {sourcePages.map(p => (
-                  <option key={p} value={p}>
-                    Page {p}
-                  </option>
-                ))}
-              </select>
-            </div>
-            <div className="questions">
-              {filteredQuestions.length === 0 && questionsForView.length > 0 && (
-                <div style={{ color: '#888' }}>
-                  No questions on this page. Pick another page from the selector.
-                </div>
-              )}
-              {filteredQuestions.map((q: Question, i: number) => (
-                <QuestionCard
-                  key={q.question_id}
-                  question={q}
-                  index={i}
-                  batchId={currentBatch || ''}
-                  assetUrl={assetUrl}
-                  onUploadAsset={uploadAsset}
-                  onVerify={() => verifyQuestion(q.question_id)}
-                  onReject={() => rejectQuestion(q.question_id)}
-                  onUpdate={(patch) => updateQuestion(q.question_id, patch)}
-                  onToggleCorrect={(letter) => toggleCorrect(q.question_id, letter)}
-                  onApplyAnswer={() => applyAnswerToQuestion(q)}
-                  onDelete={() => deleteDraftQuestion(q.question_id)}
-                  selected={selectedIds.has(q.question_id)}
-                  onToggleSelect={() => {
-                    setSelectedIds(prev => {
-                      const next = new Set(prev)
-                      if (next.has(q.question_id)) {
-                        next.delete(q.question_id)
-                      } else {
-                        next.add(q.question_id)
-                      }
-                      return next
-                    })
-                  }}
-                  pageImages={Object.entries(draft?.image_assets || {})
-                    .filter(([, asset]) => asset?.filename && asset?.source_page === q.source_page)
-                    .map(([id, asset]) => ({ id, filename: asset.filename }))}
-                />
-              ))}
-            </div>
-          </main>
-        </div>
-      )}
-
-      {showValidation && validationResult && (
-        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.8)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000 }}>
-          <div style={{ background: '#1a1a2e', padding: '24px', borderRadius: '16px', maxWidth: '500px', width: '90%' }}>
-            <h3 style={{ marginBottom: '16px' }}>Validation Results</h3>
-            <div style={{ display: 'flex', gap: '16px', marginBottom: '16px' }}>
-              <div style={{ padding: '12px', background: 'rgba(52,211,153,0.1)', borderRadius: '8px', flex: 1, textAlign: 'center' }}>
-                <div style={{ fontSize: '24px', fontWeight: 'bold', color: '#34d399' }}>{validationResult.validCount || validationResult.insertedCount || 0}</div>
-                <div style={{ fontSize: '12px', color: '#888' }}>{validationResult.insertedCount ? 'Inserted' : 'Valid'}</div>
-              </div>
-              <div style={{ padding: '12px', background: 'rgba(248,113,113,0.1)', borderRadius: '8px', flex: 1, textAlign: 'center' }}>
-                <div style={{ fontSize: '24px', fontWeight: 'bold', color: '#f87171' }}>{validationResult.failedCount || 0}</div>
-                <div style={{ fontSize: '12px', color: '#888' }}>Failed</div>
-              </div>
-              <div style={{ padding: '12px', background: 'rgba(251,191,36,0.1)', borderRadius: '8px', flex: 1, textAlign: 'center' }}>
-                <div style={{ fontSize: '24px', fontWeight: 'bold', color: '#fbbf24' }}>{validationResult.skippedCount || 0}</div>
-                <div style={{ fontSize: '12px', color: '#888' }}>Skipped</div>
-              </div>
-            </div>
-            <div style={{ display: 'flex', gap: '8px', marginBottom: '12px', flexWrap: 'wrap' }}>
-              <button
-                onClick={() => { setValidationFilter('failed'); setFilter('all'); setShowValidation(false) }}
-                style={{ padding: '8px 12px', background: '#f87171', border: 'none', borderRadius: '6px', color: '#fff', cursor: 'pointer' }}
-              >
-                Show Failed
-              </button>
-              <button
-                onClick={() => { setValidationFilter('valid'); setFilter('all'); setShowValidation(false) }}
-                style={{ padding: '8px 12px', background: '#34d399', border: 'none', borderRadius: '6px', color: '#0b0f16', cursor: 'pointer' }}
-              >
-                Show Valid
-              </button>
-              <button
-                onClick={downloadValidationErrors}
-                style={{ padding: '8px 12px', background: '#2d2d44', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '6px', color: '#fff', cursor: 'pointer' }}
-              >
-                Download Errors (CSV)
-              </button>
-              <button
-                onClick={() => { setValidationFilter('all'); setFilter('all'); setShowValidation(false) }}
-                style={{ padding: '8px 12px', background: '#2d2d44', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '6px', color: '#fff', cursor: 'pointer' }}
-              >
-                Clear Filter
-              </button>
-            </div>
-            {validationResult.errors?.length > 0 && (
-              <div style={{ maxHeight: '200px', overflowY: 'auto', background: 'rgba(0,0,0,0.3)', padding: '12px', borderRadius: '8px' }}>
-                {validationResult.errors.map((e: any, i: number) => {
-                  const idx = typeof e.index === 'number' ? e.index : -1
-                  const q = idx >= 0 ? lastValidationQuestions[idx] : null
-                  const info = formatValidationError(e, q)
-                  const qnum = info.qnum
-                  const page = info.page
-                  const message = info.message
-                  const labelParts = []
-                  if (page) labelParts.push(`Page ${page}`)
-                  if (qnum) labelParts.push(`Q${qnum}`)
-                  const label = labelParts.length ? `${labelParts.join(' - ')}: ` : ''
-                  return (
-                    <div key={i} style={{ padding: '8px 0', borderBottom: '1px solid rgba(255,255,255,0.1)', color: '#f87171', fontSize: '13px' }}>
-                      {label}{message}
+                  {validationErrors.length > 0 && (
+                    <div style={{ marginTop: '10px', fontSize: '12px', color: '#cbd5f5' }}>
+                      <div style={{ marginBottom: '6px' }}>Failed reasons (first 20):</div>
+                      <div style={{ maxHeight: '200px', overflowY: 'auto', paddingRight: '6px' }}>
+                        {validationErrors.slice(0, 20).map((e: any, idx: number) => {
+                          const info = formatValidationError(e, lastValidationQuestions[e?.index ?? -1])
+                          return (
+                            <div key={`valerr-${idx}`} style={{ marginBottom: '6px' }}>
+                              Page {info.page ?? '?'} · Q{info.qnum ?? '?'} · {info.field}: {info.message}
+                            </div>
+                          )
+                        })}
+                      </div>
+                      <button className="btn small" onClick={downloadValidationErrors} style={{ marginTop: '10px' }}>
+                        Download failed CSV
+                      </button>
                     </div>
-                  )
-                })}
+                  )}
+                  <button onClick={() => setShowValidation(false)} style={{ marginTop: '16px', padding: '10px 24px', background: '#6366f1', border: 'none', borderRadius: '8px', color: '#fff', cursor: 'pointer' }}>
+                    Close
+                  </button>
+                </div>
               </div>
             )}
-            <button onClick={() => setShowValidation(false)} style={{ marginTop: '16px', padding: '10px 24px', background: '#6366f1', border: 'none', borderRadius: '8px', color: '#fff', cursor: 'pointer' }}>
-              Close
-            </button>
-          </div>
+          </main>
         </div>
       )}
 
@@ -2934,6 +3192,7 @@ interface QuestionCardProps {
   question: Question
   index: number
   batchId: string
+  difficultyTypes: string[]
   assetUrl: (name?: string) => string
   onUploadAsset: (file: File) => Promise<string | null>
   onVerify: () => void
@@ -2947,7 +3206,7 @@ interface QuestionCardProps {
   pageImages: { id: string; filename: string }[]
 }
 
-function QuestionCard({ question: q, index, batchId, assetUrl, onUploadAsset, onVerify, onReject, onUpdate, onToggleCorrect, onApplyAnswer, onDelete, selected, onToggleSelect, pageImages }: QuestionCardProps) {
+function QuestionCard({ question: q, index, batchId, difficultyTypes, assetUrl, onUploadAsset, onVerify, onReject, onUpdate, onToggleCorrect, onApplyAnswer, onDelete, selected, onToggleSelect, pageImages }: QuestionCardProps) {
   const [editMode, setEditMode] = useState(false)
   const [text, setText] = useState(q.questionText)
   const [explanation, setExplanation] = useState(q.explanation || '')
@@ -3112,22 +3371,28 @@ function QuestionCard({ question: q, index, batchId, assetUrl, onUploadAsset, on
 
   return (
       <div className={`question-card ${q.verification_state}`}>
-      <div className="question-header">
-        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-          <input type="checkbox" checked={selected} onChange={onToggleSelect} />
-          <span className="q-number">Q{(q as any).questionNumber || index + 1}</span>
+        <div className="question-header">
+          <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+            <input type="checkbox" checked={selected} onChange={onToggleSelect} />
+            <span className="q-number">Q{(q as any).questionNumber || index + 1}</span>
+          </div>
+          <div className="badges">
+            <span className="badge type">{((q as any).questionType || (q as any).question_type || 'single_correct') as any}</span>
+            <span className="badge type">{q.difficulty_type || 'unknown'}</span>
+            <span className="badge level">Level {q.difficulty_level || '?'}</span>
+            <span className={`badge state ${q.verification_state}`}>{q.verification_state}</span>
+            <span className="badge page">Page {q.source_page}</span>
+            {q.correct_option_letters && (
+              <span className="badge level">Answer: {q.correct_option_letters}</span>
+            )}
+          </div>
         </div>
-        <div className="badges">
-          <span className="badge type">{((q as any).questionType || (q as any).question_type || 'single_correct') as any}</span>
-          <span className="badge type">{q.difficulty_type || 'unknown'}</span>
-          <span className="badge level">Level {q.difficulty_level || '?'}</span>
-          <span className={`badge state ${q.verification_state}`}>{q.verification_state}</span>
-          <span className="badge page">Page {q.source_page}</span>
-          {q.correct_option_letters && (
-            <span className="badge level">Answer: {q.correct_option_letters}</span>
-          )}
-        </div>
-      </div>
+
+        {q.verification_state === 'rejected' && (q as any).reject_reason && (
+          <div className="reject-reason">
+            Reject reason: {(q as any).reject_reason}
+          </div>
+        )}
 
             {normalizeImageListLocal(q.image_urls || q.image_url).map((img, idx) => (
               <div key={`${img}-${idx}`} style={{ display: 'inline-flex', flexDirection: 'column', gap: '6px', marginRight: '8px' }}>
@@ -3181,12 +3446,18 @@ function QuestionCard({ question: q, index, batchId, assetUrl, onUploadAsset, on
               onChange={e => setLevel(e.target.value)}
               placeholder="Level"
             />
-            <input
-              type="text"
+            <select
               value={difficultyType}
               onChange={e => setDifficultyType(e.target.value)}
-              placeholder="Difficulty type"
-            />
+            >
+              <option value="">Difficulty type</option>
+              {difficultyTypes.map(type => (
+                <option key={type} value={type}>
+                  {type}
+                </option>
+              ))}
+              <option value="unknown">unknown</option>
+            </select>
           </>
         ) : (
           <div className="committed-meta">
@@ -3262,29 +3533,32 @@ function QuestionCard({ question: q, index, batchId, assetUrl, onUploadAsset, on
           </div>
         ))}
       </div>
-      {editMode && pageImages.length > 0 && (
+      {pageImages.length > 0 && (
         <div className="meta-row">
-          <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap' }}>
-            {pageImages.map(img => (
-              <div key={img.id} style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                <img src={assetUrl(img.filename)} style={{ width: '120px', borderRadius: '8px' }} alt="page asset" />
-                <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
-                  <button className="btn small" onClick={() => attachQuestionImage(img.filename)} title="Use this asset as the question image.">
-                    Use for question
-                  </button>
-                  <button className="btn small" onClick={() => attachExplanationImage(img.filename)} title="Use this asset as the explanation image.">
-                    Use for explanation
-                  </button>
-                </div>
-                <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
-                  {options.map(o => (
-                    <button key={o.letter} className="btn small" onClick={() => attachOptionImageToLetter(o.letter, img.filename)} title={`Use this asset for option ${o.letter}.`}>
-                      Use for {o.letter}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', width: '100%' }}>
+            <div style={{ fontSize: '12px', color: '#9ca3af' }}>Page visuals (click to attach)</div>
+            <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap' }}>
+              {pageImages.map(img => (
+                <div key={img.id} style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                  <img src={assetUrl(img.filename)} style={{ width: '120px', borderRadius: '8px' }} alt="page asset" />
+                  <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
+                    <button className="btn small" onClick={() => attachQuestionImage(img.filename)} title="Use this asset as the question image.">
+                      Use for question
                     </button>
-                  ))}
+                    <button className="btn small" onClick={() => attachExplanationImage(img.filename)} title="Use this asset as the explanation image.">
+                      Use for explanation
+                    </button>
+                  </div>
+                  <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
+                    {options.map(o => (
+                      <button key={o.letter} className="btn small" onClick={() => attachOptionImageToLetter(o.letter, img.filename)} title={`Use this asset for option ${o.letter}.`}>
+                        Use for {o.letter}
+                      </button>
+                    ))}
+                  </div>
                 </div>
-              </div>
-            ))}
+              ))}
+            </div>
           </div>
         </div>
       )}
@@ -3298,7 +3572,6 @@ function QuestionCard({ question: q, index, batchId, assetUrl, onUploadAsset, on
           <>
             <button className="btn edit" onClick={() => setEditMode(true)} title="Edit question text, options, and metadata.">Edit</button>
             <button className="btn edit" onClick={() => setEditMode(true)} title="Edit explanation text or images.">Edit Explanation</button>
-            <button className="btn edit" onClick={onApplyAnswer} title="Apply the answer key to this question.">Apply Answer</button>
           </>
         )}
         <button className="btn verify" onClick={onVerify} title="Mark this question as verified.">Verify</button>
@@ -3315,6 +3588,7 @@ interface CommittedCardProps {
   question: CommittedQuestion
   isEditing: boolean
   editValue: CommittedQuestion | null
+  difficultyTypes: string[]
   onEdit: () => void
   onCancel: () => void
   onChange: (q: CommittedQuestion | null) => void
@@ -3325,7 +3599,7 @@ interface CommittedCardProps {
   onUploadAsset: (questionId: number, file: File) => Promise<string | null>
 }
 
-function CommittedQuestionCard({ question: q, isEditing, editValue, onEdit, onCancel, onChange, onSave, onDelete, error, assetUrl, onUploadAsset }: CommittedCardProps) {
+function CommittedQuestionCard({ question: q, isEditing, editValue, difficultyTypes, onEdit, onCancel, onChange, onSave, onDelete, error, assetUrl, onUploadAsset }: CommittedCardProps) {
   const options = Array.isArray(q.options) ? q.options : []
   const active = isEditing ? editValue || q : q
   const activeOptions = Array.isArray(active.options) ? active.options : []
@@ -3405,12 +3679,18 @@ function CommittedQuestionCard({ question: q, isEditing, editValue, onEdit, onCa
               onChange={e => onChange({ ...(active as any), topic_name: e.target.value })}
               placeholder="Topic"
             />
-            <input
-              type="text"
-              value={(active.difficulty_type || '') as any}
-              onChange={e => onChange({ ...(active as any), difficulty_type: e.target.value })}
-              placeholder="Difficulty type"
-            />
+          <select
+            value={(active.difficulty_type || '') as any}
+            onChange={e => onChange({ ...(active as any), difficulty_type: e.target.value })}
+          >
+            <option value="">Difficulty type</option>
+            {difficultyTypes.map(type => (
+              <option key={type} value={type}>
+                {type}
+              </option>
+            ))}
+            <option value="unknown">unknown</option>
+          </select>
             <input
               type="number"
               value={(active.difficulty_level || '') as any}

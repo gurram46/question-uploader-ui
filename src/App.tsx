@@ -6,6 +6,7 @@ import { useToast } from './hooks/useToast';
 import './App.css';
 import { QuestionFormProvider } from './context/QuestionFormContext';
 import ReviewApp from './ReviewApp';
+import { getExpressBase } from './utils/apiBase';
 
 type View = 'login' | 'select' | 'upload' | 'list' | 'ai';
 
@@ -14,26 +15,107 @@ function App() {
   const [loginUser, setLoginUser] = useState('');
   const [loginPass, setLoginPass] = useState('');
   const [loginError, setLoginError] = useState('');
+  const [authUser, setAuthUser] = useState(localStorage.getItem('username') || '');
+  const [registerMode, setRegisterMode] = useState(false);
+  const [registerUser, setRegisterUser] = useState('');
+  const [registerPass, setRegisterPass] = useState('');
+  const [registerPass2, setRegisterPass2] = useState('');
+  const [registerRole, setRegisterRole] = useState('reviewer');
+  const [registerError, setRegisterError] = useState('');
   const { toasts, removeToast } = useToast();
   console.log("API Base URL:", process.env.REACT_APP_API_BASE_URL);
   console.log("Environment:", process.env.REACT_APP_ENVIRONMENT);
   const isAiView = currentView === 'ai';
 
-  function handleLogin(e: React.FormEvent) {
+  const EXPRESS_BASE = getExpressBase();
+
+  React.useEffect(() => {
+    const token = localStorage.getItem('token');
+    if (!token) return;
+    fetch(`${EXPRESS_BASE}/auth/me`, { headers: { Authorization: `Bearer ${token}` } })
+      .then(res => res.ok ? res.json() : null)
+      .then(data => {
+        if (data?.username) {
+          setAuthUser(data.username);
+          localStorage.setItem('username', data.username);
+          setCurrentView('select');
+        }
+      })
+      .catch(() => {});
+  }, [EXPRESS_BASE]);
+
+  async function handleLogin(e: React.FormEvent) {
     e.preventDefault();
     if (!loginUser.trim() || !loginPass.trim()) {
       setLoginError('Enter username and password.');
       return;
     }
     setLoginError('');
-    setCurrentView('select');
+    try {
+      const res = await fetch(`${EXPRESS_BASE}/auth/login`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username: loginUser, password: loginPass })
+      });
+      if (!res.ok) {
+        const msg = await res.text();
+        setLoginError(msg || 'Login failed.');
+        return;
+      }
+      const data = await res.json();
+      if (data?.token) {
+        localStorage.setItem('token', data.token);
+      }
+      if (data?.username) {
+        localStorage.setItem('username', data.username);
+        setAuthUser(data.username);
+      }
+      setCurrentView('select');
+    } catch {
+      setLoginError('Login failed.');
+    }
+  }
+
+  async function handleRegister(e: React.FormEvent) {
+    e.preventDefault();
+    if (!registerUser.trim() || !registerPass.trim()) {
+      setRegisterError('Enter username and password.');
+      return;
+    }
+    if (registerPass !== registerPass2) {
+      setRegisterError('Passwords do not match.');
+      return;
+    }
+    setRegisterError('');
+    try {
+      const res = await fetch(`${EXPRESS_BASE}/auth/register`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username: registerUser, password: registerPass, role: registerRole })
+      });
+      if (!res.ok) {
+        const msg = await res.text();
+        setRegisterError(msg || 'Registration failed.');
+        return;
+      }
+      setRegisterMode(false);
+      setLoginUser(registerUser);
+      setLoginPass(registerPass);
+      setLoginError('');
+    } catch {
+      setRegisterError('Registration failed.');
+    }
   }
 
   function handleLogout() {
     setLoginUser('');
     setLoginPass('');
     setLoginError('');
+    setAuthUser('');
+    localStorage.removeItem('token');
+    localStorage.removeItem('username');
     setCurrentView('login');
+    fetch(`${EXPRESS_BASE}/auth/logout`, { method: 'POST' }).catch(() => {});
   }
 
   return (
@@ -107,36 +189,103 @@ function App() {
           {currentView === 'login' && (
             <div className="max-w-md mx-auto px-4">
               <div className="bg-white shadow-sm border border-gray-200 rounded-lg p-6">
-                <h2 className="text-lg font-semibold text-gray-900 mb-2">Login</h2>
-                <p className="text-sm text-gray-500 mb-6">Use your DocQuest credentials to continue.</p>
-                <form onSubmit={handleLogin} className="space-y-4">
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Username</label>
-                    <input
-                      value={loginUser}
-                      onChange={e => setLoginUser(e.target.value)}
-                      className="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-primary-200"
-                      placeholder="Enter username"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Password</label>
-                    <input
-                      type="password"
-                      value={loginPass}
-                      onChange={e => setLoginPass(e.target.value)}
-                      className="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-primary-200"
-                      placeholder="Enter password"
-                    />
-                  </div>
-                  {loginError && <div className="text-sm text-red-600">{loginError}</div>}
+                <h2 className="text-lg font-semibold text-gray-900 mb-2">{registerMode ? 'Create Account' : 'Login'}</h2>
+                <p className="text-sm text-gray-500 mb-6">
+                  {registerMode ? 'Create a new DocQuest account.' : 'Use your DocQuest credentials to continue.'}
+                </p>
+                {!registerMode ? (
+                  <form onSubmit={handleLogin} className="space-y-4">
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Username</label>
+                      <input
+                        value={loginUser}
+                        onChange={e => setLoginUser(e.target.value)}
+                        className="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-primary-200"
+                        placeholder="Enter username"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Password</label>
+                      <input
+                        type="password"
+                        value={loginPass}
+                        onChange={e => setLoginPass(e.target.value)}
+                        className="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-primary-200"
+                        placeholder="Enter password"
+                      />
+                    </div>
+                    {loginError && <div className="text-sm text-red-600">{loginError}</div>}
+                    <button
+                      type="submit"
+                      className="w-full bg-primary-600 text-white py-2 rounded-md hover:bg-primary-700 transition-colors"
+                    >
+                      Login
+                    </button>
+                  </form>
+                ) : (
+                  <form onSubmit={handleRegister} className="space-y-4">
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Username</label>
+                      <input
+                        value={registerUser}
+                        onChange={e => setRegisterUser(e.target.value)}
+                        className="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-primary-200"
+                        placeholder="Enter username"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Password</label>
+                      <input
+                        type="password"
+                        value={registerPass}
+                        onChange={e => setRegisterPass(e.target.value)}
+                        className="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-primary-200"
+                        placeholder="Enter password"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Confirm password</label>
+                      <input
+                        type="password"
+                        value={registerPass2}
+                        onChange={e => setRegisterPass2(e.target.value)}
+                        className="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-primary-200"
+                        placeholder="Confirm password"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Role</label>
+                      <select
+                        value={registerRole}
+                        onChange={e => setRegisterRole(e.target.value)}
+                        className="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-primary-200"
+                      >
+                        <option value="reviewer">Reviewer</option>
+                        <option value="viewer">Viewer</option>
+                        <option value="admin">Admin</option>
+                      </select>
+                    </div>
+                    {registerError && <div className="text-sm text-red-600">{registerError}</div>}
+                    <button
+                      type="submit"
+                      className="w-full bg-primary-600 text-white py-2 rounded-md hover:bg-primary-700 transition-colors"
+                    >
+                      Create account
+                    </button>
+                  </form>
+                )}
+                <div className="mt-4 text-center">
                   <button
-                    type="submit"
-                    className="w-full bg-primary-600 text-white py-2 rounded-md hover:bg-primary-700 transition-colors"
+                    className="text-sm text-primary-600 hover:text-primary-700"
+                    onClick={() => {
+                      setRegisterMode(!registerMode);
+                      setRegisterError('');
+                      setLoginError('');
+                    }}
                   >
-                    Login
+                    {registerMode ? 'Back to login' : 'Create account'}
                   </button>
-                </form>
+                </div>
               </div>
             </div>
           )}
@@ -173,7 +322,7 @@ function App() {
           )}
           {currentView === 'upload' && <QuestionUploadForm />}
           {currentView === 'list' && <QuestionsList />}
-          {currentView === 'ai' && <ReviewApp showTitle={false} onLogout={handleLogout} />}
+          {currentView === 'ai' && <ReviewApp bootUser={authUser} showTitle={false} onLogout={handleLogout} />}
         </main>
       </QuestionFormProvider>
 

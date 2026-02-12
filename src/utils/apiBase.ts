@@ -1,5 +1,5 @@
-const PROD_EXPRESS = 'https://docquest-express-l5mby46qbq-el.a.run.app'
-const PROD_PYTHON = 'https://docquest-python-l5mby46qbq-el.a.run.app'
+const PROD_EXPRESS = 'https://docquest-express-63254362392.asia-south1.run.app'
+const PROD_PYTHON = 'https://docquest-python-63254362392.asia-south1.run.app'
 
 export function getExpressBase(): string {
   const env = process.env.REACT_APP_API_BASE_URL

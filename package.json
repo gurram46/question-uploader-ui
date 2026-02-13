@@ -5,7 +5,7 @@
   "description": "Secure React frontend for question uploading to internal database",
   "dependencies": {
     "@types/node": "^16.18.0",
-    "@types/react": "^18.0.0",
+    "@types/react": "^18.3.25",
     "@types/react-dom": "^18.0.0",
     "axios": "^1.6.0",
     "react": "^18.2.0",

@@ -461,7 +461,7 @@ function ReviewApp({ bootToken, bootUser, showTitle = true, onLogout }: ReviewAp
     const res = await apiFetch(`${API_URL}/draft/drafts`, { headers: authHeaders() })
     if (!res.ok) return
     const data = await res.json()
-    setBatches(data)
+    setBatches(Array.isArray(data) ? data : [])
   }
 
   function formatBatchMeta(batch: BatchSummary) {

@@ -34,6 +34,8 @@ interface Question {
   chapter_name?: string
   topic_name?: string
   exam_type?: string
+  published_year?: number | string | null
+  question_fact?: string
 }
 
 interface Draft {
@@ -85,6 +87,8 @@ interface CommittedQuestion {
   chapter_name?: string
   topic_name?: string
   exam_type?: string
+  published_year?: number | string | null
+  question_fact?: string
   batch_tag?: string
   difficulty_level?: number
   difficulty_type?: string
@@ -111,6 +115,8 @@ type BulkPreset = {
   chapter: string
   topic: string
   examType: string
+  publishedYear: string
+  questionFact: string
   tag: string
 }
 
@@ -148,9 +154,13 @@ function ReviewApp({ bootToken, bootUser, showTitle = true, onLogout }: ReviewAp
   const [bulkChapter, setBulkChapter] = useState('')
   const [bulkTopic, setBulkTopic] = useState('')
   const [bulkExamType, setBulkExamType] = useState('')
+  const [bulkPublishedYear, setBulkPublishedYear] = useState('')
+  const [bulkQuestionFact, setBulkQuestionFact] = useState('')
   const [bulkTag, setBulkTag] = useState('')
   const [bulkRangeStart, setBulkRangeStart] = useState('')
   const [bulkRangeEnd, setBulkRangeEnd] = useState('')
+  const [bulkPageStart, setBulkPageStart] = useState('')
+  const [bulkPageEnd, setBulkPageEnd] = useState('')
   const [bulkBusy, setBulkBusy] = useState(false)
   const [bulkPresetName, setBulkPresetName] = useState('')
   const [bulkPresets, setBulkPresets] = useState<BulkPreset[]>([])
@@ -246,6 +256,8 @@ function ReviewApp({ bootToken, bootUser, showTitle = true, onLogout }: ReviewAp
         if (typeof parsed?.chapter === 'string') setBulkChapter(parsed.chapter)
         if (typeof parsed?.topic === 'string') setBulkTopic(parsed.topic)
         if (typeof parsed?.examType === 'string') setBulkExamType(parsed.examType)
+        if (typeof parsed?.publishedYear === 'string') setBulkPublishedYear(parsed.publishedYear)
+        if (typeof parsed?.questionFact === 'string') setBulkQuestionFact(parsed.questionFact)
         if (typeof parsed?.tag === 'string') setBulkTag(parsed.tag)
       }
       const presetsRaw = localStorage.getItem(BULK_PRESETS_KEY)
@@ -266,6 +278,8 @@ function ReviewApp({ bootToken, bootUser, showTitle = true, onLogout }: ReviewAp
       chapter: bulkChapter,
       topic: bulkTopic,
       examType: bulkExamType,
+      publishedYear: bulkPublishedYear,
+      questionFact: bulkQuestionFact,
       tag: bulkTag
     }
     try {
@@ -273,7 +287,7 @@ function ReviewApp({ bootToken, bootUser, showTitle = true, onLogout }: ReviewAp
     } catch {
       // ignore storage errors
     }
-  }, [bulkSubject, bulkChapter, bulkTopic, bulkExamType, bulkTag])
+  }, [bulkSubject, bulkChapter, bulkTopic, bulkExamType, bulkPublishedYear, bulkQuestionFact, bulkTag])
 
   useEffect(() => {
     if (!allQuestions) return
@@ -351,6 +365,8 @@ function ReviewApp({ bootToken, bootUser, showTitle = true, onLogout }: ReviewAp
     setBulkChapter(preset.chapter || '')
     setBulkTopic(preset.topic || '')
     setBulkExamType(preset.examType || '')
+    setBulkPublishedYear(preset.publishedYear || '')
+    setBulkQuestionFact(preset.questionFact || '')
     setBulkTag(preset.tag || '')
     setUiNotice(`Applied preset: ${preset.name}`)
   }
@@ -367,6 +383,8 @@ function ReviewApp({ bootToken, bootUser, showTitle = true, onLogout }: ReviewAp
       chapter: bulkChapter.trim(),
       topic: bulkTopic.trim(),
       examType: bulkExamType.trim(),
+      publishedYear: bulkPublishedYear.trim(),
+      questionFact: bulkQuestionFact.trim(),
       tag: bulkTag.trim()
     }
     const updated = [...bulkPresets.filter(p => p.name !== name), next]
@@ -942,6 +960,7 @@ function ReviewApp({ bootToken, bootUser, showTitle = true, onLogout }: ReviewAp
   async function addQuestion() {
     if (!currentBatch) return
     const all = draft?.questions || []
+    const newQuestionYear = Number(bulkPublishedYear.trim())
     const maxQ = all.reduce((acc, q) => {
       const raw = (q as any).questionNumber ?? (q as any).question_number
       const num = Number(raw)
@@ -961,7 +980,9 @@ function ReviewApp({ bootToken, bootUser, showTitle = true, onLogout }: ReviewAp
       subject_name: (bulkSubject || '').trim(),
       chapter_name: (bulkChapter || '').trim(),
       topic_name: (bulkTopic || '').trim(),
-      exam_type: (bulkExamType || '').trim()
+      exam_type: (bulkExamType || '').trim(),
+      published_year: bulkPublishedYear.trim() && Number.isFinite(newQuestionYear) ? Math.trunc(newQuestionYear) : null,
+      question_fact: (bulkQuestionFact || '').trim()
     }
     const res = await apiFetch(`${API_URL}/draft/${currentBatch}/question`, {
       method: 'POST',
@@ -1092,6 +1113,8 @@ function ReviewApp({ bootToken, bootUser, showTitle = true, onLogout }: ReviewAp
         chapterName: ((q as any).chapter_name || '')?.trim().toLowerCase(),
         topicName: ((q as any).topic_name || '')?.trim().toLowerCase(),
         examType: (q.exam_type || bulkExamType).trim().toLowerCase(),
+        publishedYear: (q as any).published_year ?? null,
+        questionFact: ((q as any).question_fact || '').trim(),
         batchTag: bulkTag.trim(),
         difficultyLevel: q.difficulty_level,
         difficultyType: (q.difficulty_type || '')?.trim().toLowerCase() === 'unknown' ? null : (q.difficulty_type || '')?.trim().toLowerCase(),
@@ -1195,9 +1218,18 @@ function ReviewApp({ bootToken, bootUser, showTitle = true, onLogout }: ReviewAp
     const chapter = bulkChapter.trim()
     const topic = bulkTopic.trim()
     const examType = bulkExamType.trim()
+    const questionFact = bulkQuestionFact.trim()
+    const publishedYearRaw = bulkPublishedYear.trim()
+    const hasPublishedYear = publishedYearRaw.length > 0
+    const publishedYear = Number(publishedYearRaw)
 
-    if (!subject && !chapter && !topic && !examType) {
-      alert('Enter subject, chapter, topic, or exam type to apply.')
+    if (hasPublishedYear && (!Number.isFinite(publishedYear) || publishedYear < 1900 || publishedYear > 2100)) {
+      alert('Enter a valid publication year (1900-2100).')
+      return
+    }
+
+    if (!subject && !chapter && !topic && !examType && !questionFact && !hasPublishedYear) {
+      alert('Enter metadata fields to apply.')
       return
     }
 
@@ -1209,6 +1241,8 @@ function ReviewApp({ bootToken, bootUser, showTitle = true, onLogout }: ReviewAp
     if (chapter) patch.chapter_name = chapter
     if (topic) patch.topic_name = topic
     if (examType) patch.exam_type = examType
+    if (questionFact) patch.question_fact = questionFact
+    if (hasPublishedYear && Number.isFinite(publishedYear)) patch.published_year = Math.trunc(publishedYear)
 
     setBulkBusy(true)
     const body: any = { mode, patch }
@@ -1228,6 +1262,62 @@ function ReviewApp({ bootToken, bootUser, showTitle = true, onLogout }: ReviewAp
     if (result?.updated !== undefined) {
       setUiNotice(`Updated ${result.updated} question(s).`)
     }
+  }
+
+  async function applyBulkMetadataByPageRange() {
+    if (!draft?.questions || !currentBatch) return
+    const subject = bulkSubject.trim()
+    const chapter = bulkChapter.trim()
+    const topic = bulkTopic.trim()
+    const examType = bulkExamType.trim()
+    const questionFact = bulkQuestionFact.trim()
+    const publishedYearRaw = bulkPublishedYear.trim()
+    const hasPublishedYear = publishedYearRaw.length > 0
+    const publishedYear = Number(publishedYearRaw)
+    if (hasPublishedYear && (!Number.isFinite(publishedYear) || publishedYear < 1900 || publishedYear > 2100)) {
+      alert('Enter a valid publication year (1900-2100).')
+      return
+    }
+    if (!subject && !chapter && !topic && !examType && !questionFact && !hasPublishedYear) {
+      alert('Enter metadata fields to apply.')
+      return
+    }
+
+    const start = Number(bulkPageStart)
+    const end = Number(bulkPageEnd)
+    const hasRange = Number.isFinite(start) && Number.isFinite(end) && start > 0 && end >= start
+    if (!hasRange) {
+      alert('Enter a valid source page range')
+      return
+    }
+
+    const patch: any = {}
+    if (subject) patch.subject_name = subject
+    if (chapter) patch.chapter_name = chapter
+    if (topic) patch.topic_name = topic
+    if (examType) patch.exam_type = examType
+    if (questionFact) patch.question_fact = questionFact
+    if (hasPublishedYear && Number.isFinite(publishedYear)) patch.published_year = Math.trunc(publishedYear)
+
+    const targets = (draft.questions || []).filter(q => {
+      const sp = Number(q.source_page || 0)
+      return Number.isFinite(sp) && sp >= start && sp <= end
+    })
+    if (!targets.length) {
+      alert('No questions found in this source page range.')
+      return
+    }
+
+    setBulkBusy(true)
+    let updated = 0
+    for (const q of targets) {
+      const ok = await updateQuestion(q.question_id, patch, false)
+      if (ok) updated += 1
+    }
+    setBulkBusy(false)
+    await loadDraft(currentBatch)
+    await refreshAllIfLoaded()
+    setUiNotice(`Updated ${updated} question(s) for source pages ${start}-${end}.`)
   }
 
   function parseAnswerKey(text: string): Record<number, string> {
@@ -2143,7 +2233,7 @@ function ReviewApp({ bootToken, bootUser, showTitle = true, onLogout }: ReviewAp
       alert('No committed questions to export.')
       return
     }
-    const header = ['question_id', 'question_text', 'subject', 'chapter', 'topic', 'exam_type', 'batch_tag', 'difficulty_level', 'difficulty_type', 'question_type']
+    const header = ['question_id', 'question_text', 'subject', 'chapter', 'topic', 'exam_type', 'published_year', 'question_fact', 'batch_tag', 'difficulty_level', 'difficulty_type', 'question_type']
     const rows = committedForView.map(q => [
       q.id ?? '',
       (q.question_text || '').replace(/\n/g, ' ').trim(),
@@ -2151,6 +2241,8 @@ function ReviewApp({ bootToken, bootUser, showTitle = true, onLogout }: ReviewAp
       q.chapter_name || '',
       q.topic_name || '',
       q.exam_type || '',
+      (q as any).published_year || '',
+      (q as any).question_fact || '',
       q.batch_tag || '',
       q.difficulty_level ?? '',
       q.difficulty_type || '',
@@ -2386,6 +2478,8 @@ function ReviewApp({ bootToken, bootUser, showTitle = true, onLogout }: ReviewAp
         q?.chapter_name ?? '',
         q?.topic_name ?? '',
         q?.exam_type ?? '',
+        (q as any)?.published_year ?? '',
+        (q as any)?.question_fact ?? '',
         info.page ?? '',
         info.qnum ?? '',
         info.field,
@@ -2393,7 +2487,7 @@ function ReviewApp({ bootToken, bootUser, showTitle = true, onLogout }: ReviewAp
         info.message
       ]
     })
-    const header = ['question_id', 'subject', 'chapter', 'topic', 'exam_type', 'page', 'question_number', 'field', 'reason', 'message']
+    const header = ['question_id', 'subject', 'chapter', 'topic', 'exam_type', 'published_year', 'question_fact', 'page', 'question_number', 'field', 'reason', 'message']
     const csv = [header, ...rows].map(r => r.map(v => `"${String(v).replace(/"/g, '""')}"`).join(',')).join('\n')
     const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' })
     const url = URL.createObjectURL(blob)
@@ -2904,8 +2998,8 @@ function ReviewApp({ bootToken, bootUser, showTitle = true, onLogout }: ReviewAp
                 </details>
               </details>
               <details className="bulk-section" open>
-                <summary className="section-title">Step 2 — Add Subject / Chapter / Topic</summary>
-                <div className="section-desc">Fill once, then apply to all or only missing fields.</div>
+                <summary className="section-title">Step 2 — Add Subject / Chapter / Topic / Exam / Facts</summary>
+                <div className="section-desc">Fill once, then apply by question range, source page range, or all questions.</div>
                 <div className="bulk-row">
                   <input
                     type="text"
@@ -2932,6 +3026,18 @@ function ReviewApp({ bootToken, bootUser, showTitle = true, onLogout }: ReviewAp
                     <option value="jee advanced">JEE Advanced</option>
                   </select>
                   <input
+                    type="number"
+                    placeholder="Published year (e.g. 2024)"
+                    value={bulkPublishedYear}
+                    onChange={e => setBulkPublishedYear(e.target.value)}
+                  />
+                  <input
+                    type="text"
+                    placeholder="Question fact (e.g. NEET 2024, Shift 1)"
+                    value={bulkQuestionFact}
+                    onChange={e => setBulkQuestionFact(e.target.value)}
+                  />
+                  <input
                     type="text"
                     placeholder="Batch tag"
                     value={bulkTag}
@@ -2942,6 +3048,43 @@ function ReviewApp({ bootToken, bootUser, showTitle = true, onLogout }: ReviewAp
                   </button>
                   <button className="btn small" disabled={bulkBusy} onClick={() => applyBulkMetadata('missing')} title="Apply metadata only where fields are missing.">
                     Apply to missing
+                  </button>
+                  <button className="btn small" disabled={bulkBusy || !currentBatch} onClick={addQuestion} title="Add a new empty question to this batch.">
+                    Add question
+                  </button>
+                </div>
+                <div className="bulk-row">
+                  <input
+                    type="number"
+                    placeholder="Question # start"
+                    value={bulkRangeStart}
+                    onChange={e => setBulkRangeStart(e.target.value)}
+                  />
+                  <input
+                    type="number"
+                    placeholder="Question # end"
+                    value={bulkRangeEnd}
+                    onChange={e => setBulkRangeEnd(e.target.value)}
+                  />
+                  <button className="btn small" disabled={bulkBusy} onClick={() => applyBulkMetadata('range')} title="Apply metadata to the Question # range.">
+                    Apply to question range
+                  </button>
+                </div>
+                <div className="bulk-row">
+                  <input
+                    type="number"
+                    placeholder="Source page start"
+                    value={bulkPageStart}
+                    onChange={e => setBulkPageStart(e.target.value)}
+                  />
+                  <input
+                    type="number"
+                    placeholder="Source page end"
+                    value={bulkPageEnd}
+                    onChange={e => setBulkPageEnd(e.target.value)}
+                  />
+                  <button className="btn small" disabled={bulkBusy} onClick={applyBulkMetadataByPageRange} title="Apply metadata to questions whose source page falls in this range.">
+                    Apply to source page range
                   </button>
                 </div>
               </details>
@@ -2988,6 +3131,23 @@ function ReviewApp({ bootToken, bootUser, showTitle = true, onLogout }: ReviewAp
                   />
                   <button className="btn small" disabled={bulkBusy} onClick={() => applyBulkMetadata('range')} title="Apply metadata to the Question # range.">
                     Apply to range (question #)
+                  </button>
+                </div>
+                <div className="bulk-row">
+                  <input
+                    type="number"
+                    placeholder="Source page start"
+                    value={bulkPageStart}
+                    onChange={e => setBulkPageStart(e.target.value)}
+                  />
+                  <input
+                    type="number"
+                    placeholder="Source page end"
+                    value={bulkPageEnd}
+                    onChange={e => setBulkPageEnd(e.target.value)}
+                  />
+                  <button className="btn small" disabled={bulkBusy} onClick={applyBulkMetadataByPageRange} title="Apply metadata to questions whose source page falls in this range.">
+                    Apply to page range
                   </button>
                   <button
                     className="btn small"
@@ -3214,6 +3374,9 @@ function QuestionCard({ question: q, index, batchId, difficultyTypes, assetUrl, 
   const [subject, setSubject] = useState((q as any).subject_name || '')
   const [chapter, setChapter] = useState((q as any).chapter_name || '')
   const [topic, setTopic] = useState((q as any).topic_name || '')
+  const [examType, setExamType] = useState((q as any).exam_type || '')
+  const [publishedYear, setPublishedYear] = useState((q as any).published_year ? String((q as any).published_year) : '')
+  const [questionFact, setQuestionFact] = useState((q as any).question_fact || '')
   const [difficultyType, setDifficultyType] = useState(q.difficulty_type || '')
   const [level, setLevel] = useState(q.difficulty_level ? String(q.difficulty_level) : '')
   const [questionType, setQuestionType] = useState((q as any).questionType || (q as any).question_type || 'single_correct')
@@ -3245,8 +3408,14 @@ function QuestionCard({ question: q, index, batchId, difficultyTypes, assetUrl, 
       setText(q.questionText)
       setExplanation(q.explanation || '')
       setOptions(q.options || [])
+      setSubject((q as any).subject_name || '')
+      setChapter((q as any).chapter_name || '')
+      setTopic((q as any).topic_name || '')
+      setExamType((q as any).exam_type || '')
+      setPublishedYear((q as any).published_year ? String((q as any).published_year) : '')
+      setQuestionFact((q as any).question_fact || '')
     }
-  }, [q.questionText, q.explanation, q.options, editMode])
+  }, [q.questionText, q.explanation, q.options, q.subject_name, q.chapter_name, q.topic_name, q.exam_type, (q as any).published_year, (q as any).question_fact, editMode])
 
   function updateOptionText(letter: string, value: string) {
     setOptions(prev => prev.map(o => (o.letter === letter ? { ...o, text: value } : o)))
@@ -3325,12 +3494,22 @@ function QuestionCard({ question: q, index, batchId, difficultyTypes, assetUrl, 
   function saveChanges() {
     const normalizedDiffType = difficultyType.trim()
     const difficultyValue = normalizedDiffType && normalizedDiffType.toLowerCase() !== 'unknown' ? normalizedDiffType : null
+    const yearRaw = publishedYear.trim()
+    const hasYear = yearRaw.length > 0
+    const parsedYear = Number(yearRaw)
+    if (hasYear && (!Number.isFinite(parsedYear) || parsedYear < 1900 || parsedYear > 2100)) {
+      alert('Enter a valid publication year (1900-2100).')
+      return
+    }
     onUpdate({
       questionText: text,
       explanation,
       subject_name: subject,
       chapter_name: chapter,
       topic_name: topic,
+      exam_type: examType.trim(),
+      published_year: hasYear && Number.isFinite(parsedYear) ? Math.trunc(parsedYear) : null,
+      question_fact: questionFact.trim(),
       difficulty_type: difficultyValue,
       difficulty_level: level ? Number(level) : null,
       questionType: (questionType || 'single_correct').trim().toLowerCase(),
@@ -3380,6 +3559,8 @@ function QuestionCard({ question: q, index, batchId, difficultyTypes, assetUrl, 
             <span className="badge type">{((q as any).questionType || (q as any).question_type || 'single_correct') as any}</span>
             <span className="badge type">{q.difficulty_type || 'unknown'}</span>
             <span className="badge level">Level {q.difficulty_level || '?'}</span>
+            {q.exam_type && <span className="badge type">{q.exam_type}</span>}
+            {(q as any).published_year && <span className="badge level">Year {(q as any).published_year}</span>}
             <span className={`badge state ${q.verification_state}`}>{q.verification_state}</span>
             <span className="badge page">Page {q.source_page}</span>
             {q.correct_option_letters && (
@@ -3409,6 +3590,11 @@ function QuestionCard({ question: q, index, batchId, difficultyTypes, assetUrl, 
         <textarea value={text} onChange={e => setText(e.target.value)} placeholder="Enter question text..." />
       ) : (
         <p className="question-text">{q.questionText}</p>
+      )}
+      {!editMode && (q as any).question_fact && (
+        <p className="question-text" style={{ opacity: 0.85 }}>
+          Fact: {(q as any).question_fact}
+        </p>
       )}
 
       <div className="meta-row">
@@ -3440,6 +3626,24 @@ function QuestionCard({ question: q, index, batchId, difficultyTypes, assetUrl, 
               onChange={e => setTopic(e.target.value)}
               placeholder="Topic"
             />
+            <select value={examType} onChange={e => setExamType(e.target.value)}>
+              <option value="">Exam type</option>
+              <option value="neet">NEET</option>
+              <option value="jee">JEE</option>
+              <option value="jee advanced">JEE Advanced</option>
+            </select>
+            <input
+              type="number"
+              value={publishedYear}
+              onChange={e => setPublishedYear(e.target.value)}
+              placeholder="Published year"
+            />
+            <input
+              type="text"
+              value={questionFact}
+              onChange={e => setQuestionFact(e.target.value)}
+              placeholder="Question fact (year/shift/source)"
+            />
             <input
               type="number"
               value={level}
@@ -3461,7 +3665,8 @@ function QuestionCard({ question: q, index, batchId, difficultyTypes, assetUrl, 
           </>
         ) : (
           <div className="committed-meta">
-            {(q as any).subject_name || 'subject?'} / {(q as any).chapter_name || 'chapter?'} / {(q as any).topic_name || 'topic?'}
+            {(q as any).subject_name || 'subject?'} / {(q as any).chapter_name || 'chapter?'} / {(q as any).topic_name || 'topic?'} / {(q as any).exam_type || 'exam?'} / {(q as any).published_year || 'year?'}
+            {(q as any).question_fact ? ` / ${(q as any).question_fact}` : ''}
           </div>
         )}
         <label className="btn" title="Upload or replace the main question image.">

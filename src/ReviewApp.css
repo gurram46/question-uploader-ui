@@ -1,6 +1,6 @@
 .review-scope {
-  background: #0f0f1a;
-  color: #e5e7eb;
+  background: #f3f4f6;
+  color: #111827;
   min-height: 100vh;
 }
 
@@ -13,9 +13,9 @@
 .review-scope input,
 .review-scope select,
 .review-scope textarea {
-  background: #131722;
-  color: #e5e7eb;
-  border: 1px solid #2a2f3a;
+  background: #ffffff;
+  color: #0f172a;
+  border: 1px solid #d1d5db;
   border-radius: 10px;
   padding: 12px 14px;
   font-size: 15px;
@@ -24,7 +24,7 @@
 
 .review-scope input::placeholder,
 .review-scope textarea::placeholder {
-  color: #6b7280;
+  color: #9ca3af;
 }
 
 .review-scope .header {
@@ -32,8 +32,8 @@
   align-items: center;
   justify-content: space-between;
   padding: 14px 18px;
-  border-bottom: 1px solid #1f2430;
-  background: #0c0f18;
+  border-bottom: 1px solid #e5e7eb;
+  background: #ffffff;
   position: sticky;
   top: 0;
   z-index: 10;
@@ -59,9 +59,9 @@
 }
 
 .review-scope .tab {
-  background: #131722;
-  border: 1px solid #242a36;
-  color: #cbd5f5;
+  background: #ffffff;
+  border: 1px solid #d1d5db;
+  color: #374151;
   border-radius: 10px;
   padding: 10px 16px;
   font-size: 14px;
@@ -69,9 +69,9 @@
 }
 
 .review-scope .tab.active {
-  background: #2c2f4a;
-  border-color: #3a3f5f;
-  color: #f8fafc;
+  background: #dbeafe;
+  border-color: #93c5fd;
+  color: #1d4ed8;
 }
 
 .review-scope .stats {
@@ -83,10 +83,10 @@
 
 .review-scope .stat {
   font-size: 13px;
-  background: #151925;
+  background: #ffffff;
   padding: 6px 12px;
   border-radius: 999px;
-  border: 1px solid #242a36;
+  border: 1px solid #d1d5db;
 }
 
 .review-scope .stat.verified {
@@ -101,8 +101,8 @@
 
 .review-scope .user-pill {
   font-size: 13px;
-  background: #121521;
-  border: 1px solid #2a2f3a;
+  background: #ffffff;
+  border: 1px solid #d1d5db;
   padding: 6px 12px;
   border-radius: 999px;
 }
@@ -117,8 +117,8 @@
 
 .review-scope .sidebar {
   width: 320px;
-  background: #0f1420;
-  border: 1px solid #20263a;
+  background: #ffffff;
+  border: 1px solid #e5e7eb;
   border-radius: 14px;
   padding: 16px;
   height: calc(100vh - 96px);
@@ -133,8 +133,8 @@
   display: inline-flex;
   align-items: center;
   gap: 8px;
-  background: #1a1f2b;
-  border: 1px solid #2b3242;
+  background: #ffffff;
+  border: 1px solid #d1d5db;
   padding: 12px 14px;
   border-radius: 10px;
   cursor: pointer;
@@ -149,9 +149,21 @@
   box-shadow: 0 10px 24px rgba(59, 130, 246, 0.12);
 }
 
+.review-scope .btn.answer-upload-style {
+  background: linear-gradient(180deg, rgba(59, 130, 246, 0.18), rgba(59, 130, 246, 0.08));
+  border: 1px solid rgba(59, 130, 246, 0.35);
+  box-shadow: 0 10px 24px rgba(59, 130, 246, 0.12);
+  color: #1e3a8a;
+}
+
+.review-scope .btn.answer-upload-style:hover {
+  background: linear-gradient(180deg, rgba(59, 130, 246, 0.24), rgba(59, 130, 246, 0.12));
+  color: #1e40af;
+}
+
 .review-scope .answer-status {
   font-size: 12px;
-  color: #cbd5f5;
+  color: #475569;
 }
 
 .review-scope .upload-label input {
@@ -160,17 +172,17 @@
 
 .review-scope .progress {
   font-size: 12px;
-  color: #9ca3af;
+  color: #6b7280;
   margin-top: 6px;
 }
 
 .review-scope .batch-item {
-  border: 1px solid #232a3b;
+  border: 1px solid #e5e7eb;
   border-radius: 10px;
   padding: 12px 12px;
   margin-bottom: 8px;
   cursor: pointer;
-  background: #0f131d;
+  background: #ffffff;
   display: flex;
   gap: 6px;
   flex-wrap: wrap;
@@ -178,8 +190,8 @@
 }
 
 .review-scope .batch-item.active {
-  border-color: #3a3f5f;
-  background: #161b28;
+  border-color: #93c5fd;
+  background: #eff6ff;
 }
 
 .review-scope .batch-id {
@@ -189,29 +201,33 @@
 
 .review-scope .batch-meta {
   font-size: 12px;
-  color: #9ca3af;
+  color: #6b7280;
 }
 
 .review-scope .batch-timings {
   font-size: 11px;
-  color: #7dd3fc;
+  color: #0369a1;
   margin-top: 4px;
   display: block;
 }
 
 .review-scope .btn {
-  background: #1b2030;
-  color: #e5e7eb;
-  border: 1px solid #2a3142;
+  background: #2563eb;
+  color: #ffffff;
+  border: 1px solid #1d4ed8;
   border-radius: 10px;
   padding: 10px 14px;
   cursor: pointer;
   font-size: 14px;
 }
 
+.review-scope .btn:hover {
+  background: #1d4ed8;
+}
+
 .review-scope .btn.logout {
-  background: #1c2434;
-  border-color: #334155;
+  background: #1e40af;
+  border-color: #1e3a8a;
 }
 
 .review-scope .btn.small {
@@ -220,23 +236,27 @@
 }
 
 .review-scope .btn.verify {
-  border-color: rgba(52, 211, 153, 0.4);
-  color: #34d399;
+  background: #0ea5e9;
+  border-color: #0284c7;
+  color: #ffffff;
 }
 
 .review-scope .btn.reject {
-  border-color: rgba(248, 113, 113, 0.4);
-  color: #f87171;
+  background: #2563eb;
+  border-color: #1d4ed8;
+  color: #ffffff;
 }
 
 .review-scope .btn.save {
-  border-color: rgba(59, 130, 246, 0.5);
-  color: #93c5fd;
+  background: #1d4ed8;
+  border-color: #1e40af;
+  color: #ffffff;
 }
 
 .review-scope .btn.cancel {
-  border-color: rgba(156, 163, 175, 0.4);
-  color: #9ca3af;
+  background: #60a5fa;
+  border-color: #3b82f6;
+  color: #ffffff;
 }
 
 .review-scope .bulk-metadata {
@@ -261,25 +281,25 @@
 
 .review-scope .field-label {
   font-size: 12px;
-  color: rgba(255, 255, 255, 0.72);
+  color: #475569;
 }
 
 .review-scope .field-help {
   font-size: 11px;
-  color: rgba(255, 255, 255, 0.55);
+  color: #6b7280;
 }
 
 .review-scope .advanced-details {
   margin-top: 8px;
-  background: rgba(255, 255, 255, 0.02);
-  border: 1px solid rgba(255, 255, 255, 0.06);
+  background: #f8fafc;
+  border: 1px solid #e5e7eb;
   border-radius: 10px;
   padding: 8px 12px;
 }
 
 .review-scope .advanced-details summary {
   cursor: pointer;
-  color: rgba(255, 255, 255, 0.75);
+  color: #475569;
   font-size: 12px;
 }
 
@@ -292,12 +312,19 @@
 }
 
 .review-scope .filter-pill {
-  background: #131722;
-  border: 1px solid #2a3142;
+  background: #ffffff;
+  border: 1px solid #d1d5db;
   padding: 8px 12px;
   border-radius: 999px;
   font-size: 14px;
   cursor: pointer;
+  color: #374151;
+}
+
+.review-scope .filter-pill.active {
+  background: #2563eb;
+  border-color: #1d4ed8;
+  color: #ffffff;
 }
 
 .review-scope .pagination {
@@ -310,7 +337,7 @@
 
 .review-scope .pagination-info {
   font-size: 13px;
-  color: #9ca3af;
+  color: #6b7280;
 }
 
 .review-scope .questions {
@@ -318,11 +345,11 @@
 }
 
 .review-scope .question-card {
-  border: 1px solid #232a3b;
+  border: 1px solid #e5e7eb;
   border-radius: 12px;
   padding: 16px;
   margin-bottom: 16px;
-  background: #0f131d;
+  background: #ffffff;
 }
 
 .review-scope .question-header {
@@ -347,18 +374,22 @@
   font-size: 12px;
   padding: 6px 10px;
   border-radius: 999px;
-  background: #1b2030;
-  border: 1px solid #2b3242;
+  background: #1d4ed8;
+  border: 1px solid #1e40af;
+  color: #ffffff;
+  font-weight: 600;
 }
 
 .review-scope .badge.state.verified {
-  color: #34d399;
-  border-color: rgba(52, 211, 153, 0.3);
+  background: #10b981;
+  border-color: #059669;
+  color: #ffffff;
 }
 
 .review-scope .badge.state.rejected {
-  color: #f87171;
-  border-color: rgba(248, 113, 113, 0.3);
+  background: #ef4444;
+  border-color: #dc2626;
+  color: #ffffff;
 }
 
   .review-scope .question-text {
@@ -370,8 +401,8 @@
     margin: 8px 0 4px;
     padding: 8px 10px;
     border-radius: 8px;
-    background: rgba(239, 68, 68, 0.12);
-    color: #fca5a5;
+    background: #fee2e2;
+    color: #991b1b;
     font-size: 13px;
   }
 
@@ -386,10 +417,10 @@
   display: flex;
   gap: 8px;
   align-items: center;
-  border: 1px solid #232a3b;
+  border: 1px solid #e5e7eb;
   border-radius: 10px;
   padding: 10px 12px;
-  background: #111521;
+  background: #f8fafc;
 }
 
 .review-scope .option.correct {
@@ -425,8 +456,8 @@
 }
 
 .review-scope .actions-panel {
-  background: #0f1420;
-  border: 1px solid #20263a;
+  background: #ffffff;
+  border: 1px solid #e5e7eb;
   border-radius: 16px;
   padding: 18px;
 }
@@ -441,13 +472,13 @@
 .review-scope .section-title {
   font-size: 14px;
   font-weight: 700;
-  color: #e2e8f0;
+  color: #1f2937;
   margin-bottom: 4px;
 }
 
 .review-scope .section-desc {
   font-size: 12px;
-  color: #94a3b8;
+  color: #6b7280;
   margin-bottom: 10px;
 }
 
@@ -462,20 +493,22 @@
 .review-scope .actions-title {
   font-size: 16px;
   font-weight: 600;
-  color: #f8fafc;
+  color: #111827;
 }
 
 .review-scope .actions-meta {
   font-size: 13px;
-  color: #cbd5f5;
+  color: #475569;
 }
 
 .review-scope .action-status {
   padding: 6px 12px;
   border-radius: 999px;
   font-size: 13px;
-  border: 1px solid #2b3242;
-  background: #151925;
+  border: 1px solid #d1d5db;
+  background: #ffffff;
+  color: #1f2937;
+  font-weight: 500;
 }
 
 .review-scope .actions-split {
@@ -496,8 +529,8 @@
 }
 
 .review-scope .actions-group {
-  background: #111521;
-  border: 1px solid #262c3c;
+  background: #f8fafc;
+  border: 1px solid #e5e7eb;
   border-radius: 14px;
   padding: 14px;
 }
@@ -517,14 +550,14 @@
 .review-scope .actions-group-note {
   margin-top: 10px;
   font-size: 12px;
-  color: #9ca3af;
+  color: #6b7280;
 }
 
 .review-scope .question-image,
 .review-scope .option-image {
   max-width: 240px;
   border-radius: 10px;
-  border: 1px solid #2a3142;
+  border: 1px solid #d1d5db;
 }
 
 .review-scope .status-banner {
@@ -538,15 +571,15 @@
 }
 
 .review-scope .status-banner.notice {
-  background: rgba(59, 130, 246, 0.12);
-  border: 1px solid rgba(59, 130, 246, 0.4);
-  color: #dbeafe;
+  background: #dbeafe;
+  border: 1px solid #93c5fd;
+  color: #1e3a8a;
 }
 
 .review-scope .status-banner.error {
-  background: rgba(239, 68, 68, 0.12);
-  border: 1px solid rgba(239, 68, 68, 0.4);
-  color: #fee2e2;
+  background: #fee2e2;
+  border: 1px solid #fca5a5;
+  color: #991b1b;
 }
 
 .review-scope .committed-page {
@@ -568,7 +601,7 @@
 }
 
 .review-scope .committed-card {
-  background: #0f131d;
+  background: #ffffff;
 }
 
 .review-scope .tour-overlay {
@@ -587,8 +620,8 @@
   position: relative;
   max-width: 420px;
   margin: 10vh auto 0;
-  background: #111522;
-  border: 1px solid #2a3142;
+  background: #ffffff;
+  border: 1px solid #d1d5db;
   border-radius: 12px;
   padding: 16px;
 }
@@ -600,7 +633,7 @@
 
 .review-scope .tour-body {
   font-size: 13px;
-  color: #9ca3af;
+  color: #6b7280;
 }
 
 .review-scope .tour-actions {

@@ -193,6 +193,7 @@ function ReviewApp({ bootToken, bootUser, showTitle = true, onLogout }: ReviewAp
   const [sourcePage, setSourcePage] = useState<number | null>(null)
   const [allQuestions, setAllQuestions] = useState<Question[] | null>(null)
   const [allLoading, setAllLoading] = useState(false)
+  const [recentlyAddedQuestionPin, setRecentlyAddedQuestionPin] = useState<{ questionNumber: number; sourcePage: number } | null>(null)
   const refreshTimer = useRef<number | null>(null)
   const autoRefreshTimer = useRef<number | null>(null)
   const userSetPageRef = useRef(false)
@@ -423,6 +424,7 @@ function ReviewApp({ bootToken, bootUser, showTitle = true, onLogout }: ReviewAp
 
     useEffect(() => {
       setSelectedIds(new Set())
+      setRecentlyAddedQuestionPin(null)
     }, [currentBatch])
 
     useEffect(() => {
@@ -958,9 +960,13 @@ function ReviewApp({ bootToken, bootUser, showTitle = true, onLogout }: ReviewAp
   }
 
   async function addQuestion() {
-    if (!currentBatch) return
-    const all = draft?.questions || []
+    if (!currentBatch) {
+      setUiError('Select a batch first, then use Add question manually.')
+      return
+    }
+    const all = allQuestions || draft?.questions || []
     const newQuestionYear = Number(bulkPublishedYear.trim())
+    const targetSourcePage = sourcePage || 1
     const maxQ = all.reduce((acc, q) => {
       const raw = (q as any).questionNumber ?? (q as any).question_number
       const num = Number(raw)
@@ -969,7 +975,7 @@ function ReviewApp({ bootToken, bootUser, showTitle = true, onLogout }: ReviewAp
     const payload = {
       questionText: '',
       questionNumber: maxQ + 1,
-      source_page: sourcePage || 1,
+      source_page: targetSourcePage,
       options: buildDefaultOptions(all),
       questionType: 'single_correct',
       difficulty_type: null,
@@ -994,8 +1000,23 @@ function ReviewApp({ bootToken, bootUser, showTitle = true, onLogout }: ReviewAp
       alert(msg || 'Failed to add question')
       return
     }
-    await loadDraft(currentBatch, currentPage, pageSize)
+
+    setUiError('')
+    setUiNotice(`Added manual question #${payload.questionNumber} on page ${targetSourcePage}.`)
+    setFilter('all')
+    setValidationFilter('all')
+    setFilterExamType('')
+    setFilterMissingAssets(false)
+    setSourcePage(targetSourcePage)
+    userSetPageRef.current = true
+
+    setRecentlyAddedQuestionPin({ questionNumber: payload.questionNumber, sourcePage: targetSourcePage })
+
     await loadAllQuestions(currentBatch)
+    await loadDraft(currentBatch, currentPage, pageSize)
+    window.setTimeout(() => {
+      questionsAnchorRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+    }, 50)
   }
 
   async function toggleCorrect(qid: string, letter: string) {
@@ -1451,6 +1472,39 @@ function ReviewApp({ bootToken, bootUser, showTitle = true, onLogout }: ReviewAp
     setUiNotice(`Applied ${result.updated} answers.`)
   }
 
+  async function applyParsedAnswerPairs(pairs: Array<{ number: number; answer: string }>) {
+    if (!currentBatch || !pairs.length) return 0
+    const targets = await ensureAllQuestions()
+    const key: Record<number, string> = {}
+    for (const pair of pairs) {
+      const qnum = Number(pair?.number)
+      const answer = String(pair?.answer || '').trim().toUpperCase()
+      if (!Number.isFinite(qnum)) continue
+      if (!['A', 'B', 'C', 'D', '1', '2', '3', '4'].includes(answer)) continue
+      key[qnum] = answer === '1' ? 'A' : answer === '2' ? 'B' : answer === '3' ? 'C' : answer === '4' ? 'D' : answer
+    }
+
+    const updates: any[] = []
+    for (const q of targets) {
+      const qnum = Number((q as any).questionNumber || (q as any).question_number)
+      if (!Number.isFinite(qnum)) continue
+      const answer = key[qnum]
+      if (!answer) continue
+      const updatedOptions = applyAnswerToOptions(q.options || [], answer)
+      updates.push({
+        question_id: q.question_id,
+        patch: { correct_option_letters: answer, options: updatedOptions }
+      })
+    }
+
+    if (!updates.length) return 0
+    const result = await bulkUpdateRequest({ updates })
+    if (!result) return 0
+    await loadDraft(currentBatch)
+    await refreshAllIfLoaded()
+    return Number(result.updated || 0)
+  }
+
   async function uploadAnswerKeyFile(file: File) {
     if (!file) return
     if (!currentBatch) return
@@ -1487,7 +1541,16 @@ function ReviewApp({ bootToken, bootUser, showTitle = true, onLogout }: ReviewAp
     if (pairs.length > 0) {
       const keyText = pairs.map((p: any) => `${p.number}.${p.answer}`).join(' ')
       setBulkAnswerKey(keyText)
-      setAnswerKeyStatus(`Parsed ${pairs.length} answers.`)
+      setAnswerKeyStatus(`Parsed ${pairs.length} answers. Applying...`)
+      setBulkBusy(true)
+      const applied = await applyParsedAnswerPairs(pairs)
+      setBulkBusy(false)
+      if (applied > 0) {
+        setAnswerKeyStatus(`Parsed ${pairs.length} answers and applied ${applied}.`)
+        setUiNotice(`Applied ${applied} answers from answer sheet.`)
+      } else {
+        setAnswerKeyStatus(`Parsed ${pairs.length} answers, but no matching questions were updated.`)
+      }
     } else {
       setAnswerKeyStatus('No answers parsed.')
     }
@@ -2281,7 +2344,21 @@ function ReviewApp({ bootToken, bootUser, showTitle = true, onLogout }: ReviewAp
       return String(q.exam_type || '').trim().toLowerCase() === filterExamType.toLowerCase()
     })
     .filter((q: Question) => (!filterMissingAssets ? true : hasMissingAssets(q)))
-    .sort((a: Question, b: Question) => (a.source_page || 0) - (b.source_page || 0))
+    .sort((a: Question, b: Question) => {
+      if (recentlyAddedQuestionPin) {
+        const aNum = Number((a as any).questionNumber ?? (a as any).question_number ?? 0)
+        const bNum = Number((b as any).questionNumber ?? (b as any).question_number ?? 0)
+        const aIsPinned = aNum === recentlyAddedQuestionPin.questionNumber && Number(a.source_page || 0) === recentlyAddedQuestionPin.sourcePage
+        const bIsPinned = bNum === recentlyAddedQuestionPin.questionNumber && Number(b.source_page || 0) === recentlyAddedQuestionPin.sourcePage
+        if (aIsPinned && !bIsPinned) return -1
+        if (bIsPinned && !aIsPinned) return 1
+      }
+      const pageDiff = (a.source_page || 0) - (b.source_page || 0)
+      if (pageDiff !== 0) return pageDiff
+      const aNum = Number((a as any).questionNumber ?? (a as any).question_number ?? 0)
+      const bNum = Number((b as any).questionNumber ?? (b as any).question_number ?? 0)
+      return aNum - bNum
+    })
 
   const pageImagesByPage = (() => {
     const assets = draft?.image_assets || {}
@@ -2683,6 +2760,17 @@ function ReviewApp({ bootToken, bootUser, showTitle = true, onLogout }: ReviewAp
                 <span>{uploading ? 'Processing...' : 'Upload PDF/DOCX'}</span>
                 <input type="file" accept=".pdf,.docx" onChange={uploadFile} disabled={uploading} />
               </label>
+              <div style={{ marginTop: '10px' }}>
+                <button
+                  className="btn small answer-upload-style"
+                  style={{ width: '100%' }}
+                  onClick={addQuestion}
+                  disabled={actionStatus.state === 'working' || !currentBatch}
+                  title={currentBatch ? 'Add a new question manually to this batch.' : 'Select a batch first, then add a question manually.'}
+                >
+                  Add question manually
+                </button>
+              </div>
               {uploadProgress && <p className="progress">{uploadProgress}</p>}
             </div>
 
@@ -2888,8 +2976,8 @@ function ReviewApp({ bootToken, bootUser, showTitle = true, onLogout }: ReviewAp
                   <button className="btn small" onClick={verifyAllValid} disabled={actionStatus.state === 'working'} title="Verify every question that passes local checks.">
                     Verify all valid
                   </button>
-                  <button className="btn small" onClick={addQuestion} disabled={actionStatus.state === 'working' || !currentBatch} title="Add a new empty question to this batch.">
-                    Add question
+                  <button className="btn small answer-upload-style" onClick={addQuestion} disabled={actionStatus.state === 'working' || !currentBatch} title="Add a new question manually to this batch.">
+                    Add question manually
                   </button>
                 </div>
               </details>
@@ -3049,8 +3137,8 @@ function ReviewApp({ bootToken, bootUser, showTitle = true, onLogout }: ReviewAp
                   <button className="btn small" disabled={bulkBusy} onClick={() => applyBulkMetadata('missing')} title="Apply metadata only where fields are missing.">
                     Apply to missing
                   </button>
-                  <button className="btn small" disabled={bulkBusy || !currentBatch} onClick={addQuestion} title="Add a new empty question to this batch.">
-                    Add question
+                  <button className="btn small answer-upload-style" disabled={bulkBusy || !currentBatch} onClick={addQuestion} title="Add a new question manually to this batch.">
+                    Add question manually
                   </button>
                 </div>
                 <div className="bulk-row">
@@ -3257,7 +3345,7 @@ function ReviewApp({ bootToken, bootUser, showTitle = true, onLogout }: ReviewAp
               )}
               <div className="questions">
                 {filteredQuestions.length === 0 ? (
-                  <div style={{ color: '#94a3b8', padding: '12px 4px' }}>
+                  <div style={{ color: '#475569', padding: '12px 4px' }}>
                     No questions yet. This batch is still processing.
                   </div>
                 ) : (
@@ -3309,7 +3397,7 @@ function ReviewApp({ bootToken, bootUser, showTitle = true, onLogout }: ReviewAp
                     </div>
                   )}
                   {validationErrors.length > 0 && (
-                    <div style={{ marginTop: '10px', fontSize: '12px', color: '#cbd5f5' }}>
+                    <div style={{ marginTop: '10px', fontSize: '12px', color: '#475569' }}>
                       <div style={{ marginBottom: '6px' }}>Failed reasons (first 20):</div>
                       <div style={{ maxHeight: '200px', overflowY: 'auto', paddingRight: '6px' }}>
                         {validationErrors.slice(0, 20).map((e: any, idx: number) => {
@@ -3337,8 +3425,8 @@ function ReviewApp({ bootToken, bootUser, showTitle = true, onLogout }: ReviewAp
       )}
 
       {viewMode === 'review' && (
-      <footer style={{ position: 'fixed', bottom: 0, left: 0, right: 0, background: 'rgba(0,0,0,0.85)', padding: '16px 32px', display: 'flex', alignItems: 'center', gap: '16px', borderTop: '1px solid rgba(255,255,255,0.1)' }}>
-        <div style={{ flex: 1, textAlign: 'center', color: '#888' }}>
+      <footer style={{ position: 'fixed', bottom: 0, left: 0, right: 0, background: 'rgba(255,255,255,0.98)', padding: '16px 32px', display: 'flex', alignItems: 'center', gap: '16px', borderTop: '1px solid #d1d5db', zIndex: 30, boxShadow: '0 -6px 20px rgba(15, 23, 42, 0.08)' }}>
+        <div style={{ flex: 1, textAlign: 'center', color: '#1f2937', fontWeight: 500 }}>
           {stats.verified} verified - {stats.pending} pending
         </div>
       </footer>

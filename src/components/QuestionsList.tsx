@@ -6,6 +6,7 @@ import { useToast } from '../hooks/useToast';
 
 const QuestionsList: React.FC = () => {
   const { showError, showSuccess } = useToast();
+  const controlClass = 'w-full px-3 sm:px-4 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500 bg-white text-slate-900';
   const [questions, setQuestions] = useState<GroupedQuestion[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
@@ -183,7 +184,7 @@ const QuestionsList: React.FC = () => {
               <input
                 type="text"
                 placeholder="Search questions, subjects, chapters, or topics..."
-                className="w-full px-3 sm:px-4 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500"
+                className={controlClass}
                 onChange={(e) => debouncedSetSearchTerm(e.target.value)}
               />
             </div>
@@ -193,7 +194,7 @@ const QuestionsList: React.FC = () => {
               <select
                 value={selectedSubject}
                 onChange={(e) => setSelectedSubject(e.target.value)}
-                className="w-full px-3 sm:px-4 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500"
+                className={controlClass}
               >
                 <option value="">All Subjects</option>
                 {uniqueSubjects.map(subject => (
@@ -207,7 +208,7 @@ const QuestionsList: React.FC = () => {
               <select
                 value={selectedChapter}
                 onChange={(e) => setSelectedChapter(e.target.value)}
-                className="w-full px-3 sm:px-4 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500"
+                className={controlClass}
               >
                 <option value="">All Chapters</option>
                 {uniqueChapters.map(ch => (
@@ -221,7 +222,7 @@ const QuestionsList: React.FC = () => {
               <select
                 value={selectedDifficultyKey}
                 onChange={(e) => setSelectedDifficultyKey(e.target.value)}
-                className="w-full px-3 sm:px-4 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500"
+                className={controlClass}
               >
                 <option value="">All Difficulties</option>
                 {difficultyOptions.map(d => (

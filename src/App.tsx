@@ -9,6 +9,8 @@ import ReviewApp from './ReviewApp';
 import { getExpressBase } from './utils/apiBase';
 
 type View = 'login' | 'select' | 'upload' | 'list' | 'ai';
+const formControlClass =
+  'w-full border border-gray-300 rounded-md px-3 py-2 bg-white text-slate-900 placeholder:text-gray-500 focus:outline-none focus:ring-2 focus:ring-primary-200';
 
 function App() {
   const [currentView, setCurrentView] = useState<View>('login');
@@ -253,7 +255,7 @@ function App() {
                       <input
                         value={loginUser}
                         onChange={e => setLoginUser(e.target.value)}
-                        className="w-full border border-gray-300 rounded-md px-3 py-2 bg-white text-gray-900 placeholder:text-gray-500 focus:outline-none focus:ring-2 focus:ring-primary-200"
+                        className={formControlClass}
                         placeholder="Enter username or email"
                       />
                     </div>
@@ -263,7 +265,7 @@ function App() {
                         type="password"
                         value={loginPass}
                         onChange={e => setLoginPass(e.target.value)}
-                        className="w-full border border-gray-300 rounded-md px-3 py-2 bg-white text-gray-900 placeholder:text-gray-500 focus:outline-none focus:ring-2 focus:ring-primary-200"
+                        className={formControlClass}
                         placeholder="Enter password"
                       />
                     </div>
@@ -302,7 +304,7 @@ function App() {
                       <input
                         value={registerUser}
                         onChange={e => setRegisterUser(e.target.value)}
-                        className="w-full border border-gray-300 rounded-md px-3 py-2 bg-white text-gray-900 placeholder:text-gray-500 focus:outline-none focus:ring-2 focus:ring-primary-200"
+                        className={formControlClass}
                         placeholder="Enter username"
                       />
                     </div>
@@ -311,7 +313,7 @@ function App() {
                       <input
                         value={registerEmail}
                         onChange={e => setRegisterEmail(e.target.value)}
-                        className="w-full border border-gray-300 rounded-md px-3 py-2 bg-white text-gray-900 placeholder:text-gray-500 focus:outline-none focus:ring-2 focus:ring-primary-200"
+                        className={formControlClass}
                         placeholder="Enter email"
                       />
                     </div>
@@ -321,7 +323,7 @@ function App() {
                         type="password"
                         value={registerPass}
                         onChange={e => setRegisterPass(e.target.value)}
-                        className="w-full border border-gray-300 rounded-md px-3 py-2 bg-white text-gray-900 placeholder:text-gray-500 focus:outline-none focus:ring-2 focus:ring-primary-200"
+                        className={formControlClass}
                         placeholder="Enter password"
                       />
                     </div>
@@ -331,7 +333,7 @@ function App() {
                         type="password"
                         value={registerPass2}
                         onChange={e => setRegisterPass2(e.target.value)}
-                        className="w-full border border-gray-300 rounded-md px-3 py-2 bg-white text-gray-900 placeholder:text-gray-500 focus:outline-none focus:ring-2 focus:ring-primary-200"
+                        className={formControlClass}
                         placeholder="Confirm password"
                       />
                     </div>
@@ -340,7 +342,7 @@ function App() {
                       <select
                         value={registerRole}
                         onChange={e => setRegisterRole(e.target.value)}
-                        className="w-full border border-gray-300 rounded-md px-3 py-2 bg-white text-gray-900 focus:outline-none focus:ring-2 focus:ring-primary-200"
+                        className={formControlClass}
                       >
                         <option value="student">Student</option>
                         <option value="admin">Admin</option>
@@ -412,16 +414,16 @@ function App() {
       </QuestionFormProvider>
 
       {/* Footer */}
-      <footer className="bg-white border-t border-gray-200 py-6 mt-12">
+      {!isAiView && <footer className="bg-white border-t border-gray-200 py-6 mt-12">
         <div className="max-w-6xl mx-auto px-4 text-center">
-          <p className="text-sm text-gray-500">
+          <p className="text-sm text-gray-700">
             Secure Question Uploader • Internal Database Management System
           </p>
-          <p className="text-xs text-gray-400 mt-1">
+          <p className="text-xs text-gray-600 mt-1">
             Environment: {process.env.REACT_APP_ENVIRONMENT || 'development'}
           </p>
         </div>
-      </footer>
+      </footer>}
 
       {/* Toast Notifications */}
       <ToastContainer toasts={toasts} onRemove={removeToast} />

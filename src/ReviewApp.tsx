@@ -985,19 +985,28 @@ function ReviewApp({ bootToken, bootUser, showTitle = true, onLogout }: ReviewAp
   async function toggleCorrect(qid: string, letter: string) {
     const q = draft?.questions.find(x => x.question_id === qid)
     if (!q) return
-    const options = q.options.map(o => ({
-      ...o,
-      is_correct: o.letter === letter ? !o.is_correct : o.is_correct
-    }))
+    const qType = String(q.questionType || q.question_type || 'single_correct').toLowerCase()
+    const currentTarget = q.options.find(o => o.letter === letter)
+    const nextChecked = currentTarget ? !currentTarget.is_correct : true
+    const options = q.options.map(o => {
+      if (qType === 'single_correct') {
+        return { ...o, is_correct: o.letter === letter ? nextChecked : false }
+      }
+      return { ...o, is_correct: o.letter === letter ? nextChecked : o.is_correct }
+    })
+    const correctLetters = options
+      .filter(o => o.is_correct)
+      .map(o => String(o.letter).toUpperCase())
+      .join(',') || null
     setDraft(prev => {
       if (!prev) return prev
       const nextQuestions = (prev.questions || []).map(item => {
         if (item.question_id !== qid) return item
-        return { ...item, options }
+        return { ...item, options, correct_option_letters: correctLetters }
       })
       return { ...prev, questions: nextQuestions }
     })
-    updateQuestion(qid, { options } as any)
+    updateQuestion(qid, { options, correct_option_letters: correctLetters } as any)
   }
 
   function assetUrl(name?: string) {
@@ -2521,6 +2530,19 @@ function ReviewApp({ bootToken, bootUser, showTitle = true, onLogout }: ReviewAp
     return { page, qnum, field, reason, message }
   }
 
+  function getQuestionValidationMessage(q: Question): string | null {
+    if (!validationFailedIds.has(q.question_id)) return null
+    const matchingError = validationErrors.find((e: any) => {
+      const directId = e?.question_id || e?.questionId
+      if (directId && directId === q.question_id) return true
+      const idx = typeof e?.index === 'number' ? e.index : -1
+      const indexedQuestion = idx >= 0 ? lastValidationQuestions[idx] : null
+      return indexedQuestion?.question_id === q.question_id
+    })
+    if (!matchingError) return 'Check required fields and selected answer.'
+    return formatValidationError(matchingError, q).message
+  }
+
   function downloadValidationErrors() {
     if (!validationErrors.length) {
       alert('No validation errors to download.')
@@ -3335,6 +3357,7 @@ function ReviewApp({ bootToken, bootUser, showTitle = true, onLogout }: ReviewAp
                         batchId={currentBatch || ''}
                         difficultyTypes={difficultyTypes}
                         validationStatus={validationFailedIds.has(q.question_id) ? 'failed' : validationValidIds.has(q.question_id) ? 'valid' : 'pending'}
+                        validationMessage={getQuestionValidationMessage(q)}
                         assetUrl={assetUrl}
                         onUploadAsset={uploadAsset}
                         onVerify={() => verifyQuestion(q.question_id, true, q)}
@@ -3421,6 +3444,7 @@ interface QuestionCardProps {
   batchId: string
   difficultyTypes: string[]
   validationStatus: 'failed' | 'valid' | 'pending'
+  validationMessage?: string | null
   assetUrl: (name?: string) => string
   onUploadAsset: (file: File) => Promise<string | null>
   onVerify: () => void
@@ -3436,7 +3460,7 @@ interface QuestionCardProps {
   pageImages: { id: string; filename: string }[]
 }
 
-function QuestionCard({ question: q, index, batchId, difficultyTypes, validationStatus, assetUrl, onUploadAsset, onVerify, onValidate, onCommit, onReject, onUpdate, onToggleCorrect, onApplyAnswer, onDelete, selected, onToggleSelect, pageImages }: QuestionCardProps) {
+function QuestionCard({ question: q, index, batchId, difficultyTypes, validationStatus, validationMessage, assetUrl, onUploadAsset, onVerify, onValidate, onCommit, onReject, onUpdate, onToggleCorrect, onApplyAnswer, onDelete, selected, onToggleSelect, pageImages }: QuestionCardProps) {
   const [editMode, setEditMode] = useState(false)
   const [text, setText] = useState(q.questionText)
   const [explanation, setExplanation] = useState(q.explanation || '')
@@ -3464,6 +3488,15 @@ function QuestionCard({ question: q, index, batchId, difficultyTypes, validation
       correctSet.add(mapToNum[c])
     }
   }
+  const commitStatus = q.verification_state === 'committed' ? 'done' : 'pending'
+  const combinedStatusClass =
+    q.verification_state === 'rejected' || validationStatus === 'failed'
+      ? 'failed'
+      : q.verification_state === 'committed'
+        ? 'done'
+        : q.verification_state === 'verified' && validationStatus === 'valid'
+          ? 'ready'
+          : 'pending'
 
   useEffect(() => {
     if (!editMode) {
@@ -3631,10 +3664,8 @@ function QuestionCard({ question: q, index, batchId, difficultyTypes, validation
             <span className="badge level">Level {q.difficulty_level || '?'}</span>
             {q.exam_type && <span className="badge type">{q.exam_type}</span>}
             {(q as any).published_year && <span className="badge level">Year {(q as any).published_year}</span>}
-            <span className={`badge state ${q.verification_state}`}>{q.verification_state}</span>
-            <span className={`badge validation ${validationStatus}`}>{validationStatus === 'pending' ? 'Validation pending' : `Validation ${validationStatus}`}</span>
-            <span className={`badge commit ${q.verification_state === 'committed' ? 'done' : 'pending'}`}>
-              {q.verification_state === 'committed' ? 'Commit done' : 'Commit pending'}
+            <span className={`badge review-status ${combinedStatusClass}`}>
+              {`Review: ${q.verification_state} | Validation: ${validationStatus} | Commit: ${commitStatus}`}
             </span>
             <span className="badge page">Page {q.source_page}</span>
             {q.correct_option_letters && (
@@ -3646,6 +3677,12 @@ function QuestionCard({ question: q, index, batchId, difficultyTypes, validation
         {q.verification_state === 'rejected' && (q as any).reject_reason && (
           <div className="reject-reason">
             Reject reason: {(q as any).reject_reason}
+          </div>
+        )}
+
+        {validationStatus === 'failed' && validationMessage && (
+          <div className="reject-reason">
+            Validation failed: {validationMessage}
           </div>
         )}
 

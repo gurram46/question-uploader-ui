@@ -426,34 +426,28 @@
   color: #ffffff;
 }
 
-.review-scope .badge.validation.pending {
+.review-scope .badge.review-status.pending {
   background: #f8fafc;
   border-color: #cbd5e1;
   color: #475569;
 }
 
-.review-scope .badge.validation.valid {
-  background: #dcfce7;
-  border-color: #22c55e;
-  color: #166534;
-}
-
-.review-scope .badge.validation.failed {
-  background: #fee2e2;
-  border-color: #ef4444;
-  color: #991b1b;
-}
-
-.review-scope .badge.commit.pending {
+.review-scope .badge.review-status.ready {
   background: #eff6ff;
-  border-color: #93c5fd;
+  border-color: #60a5fa;
   color: #1d4ed8;
 }
 
-.review-scope .badge.commit.done {
+.review-scope .badge.review-status.done {
   background: #dcfce7;
   border-color: #22c55e;
   color: #166534;
+}
+
+.review-scope .badge.review-status.failed {
+  background: #fee2e2;
+  border-color: #ef4444;
+  color: #991b1b;
 }
 
   .review-scope .question-text {

@@ -44,6 +44,31 @@ const DifficultyGuide: React.FC<DifficultyGuideProps> = ({ compact = false }) =>
     <details style={panelStyle}>
       <summary style={summaryStyle}>How to choose difficulty level and type</summary>
       <div style={bodyStyle}>
+        {compact ? (
+          <>
+            <p style={{ margin: '0 0 10px' }}>
+              Use the easiest rule possible.
+            </p>
+            <ul style={listStyle}>
+              <li><strong>Level 1</strong>: easy and direct</li>
+              <li><strong>Level 2</strong>: medium, needs some thinking</li>
+              <li><strong>Level 3</strong>: hard, needs real reasoning</li>
+            </ul>
+            <ul style={listStyle}>
+              <li><strong>facts</strong> = direct fact</li>
+              <li><strong>definitions</strong> = asks meaning</li>
+              <li><strong>matching</strong> = match items</li>
+              <li><strong>statements</strong> = statement question</li>
+              <li><strong>diagramatic</strong> = image/figure needed</li>
+              <li><strong>numericals</strong> = calculation</li>
+              <li><strong>assertion and reason</strong> = assertion-reason format</li>
+            </ul>
+            <p style={{ margin: 0 }}>
+              If confused, choose the simpler option. Do not overrate difficulty.
+            </p>
+          </>
+        ) : (
+          <>
         <p style={{ margin: '0 0 10px' }}>
           Use this simple rule: first choose the <strong>level</strong> by how much thinking the student needs, then choose the <strong>type</strong> by what kind of question it is.
         </p>
@@ -91,6 +116,8 @@ const DifficultyGuide: React.FC<DifficultyGuideProps> = ({ compact = false }) =>
         <p style={{ margin: 0 }}>
           Do not overthink it. Pick the closest type, and keep the level on the lower side unless the question clearly needs more reasoning.
         </p>
+          </>
+        )}
       </div>
     </details>
   );

@@ -2,6 +2,7 @@
 import { useEffect, useRef, useState } from 'react'
 import './ReviewApp.css'
 import { getExpressBase, getPythonBase } from './utils/apiBase'
+import DifficultyGuide from './components/DifficultyGuide'
 
 interface Option {
   letter: string
@@ -109,19 +110,7 @@ type ReviewAppProps = {
   onLogout?: () => void
 }
 
-type BulkPreset = {
-  name: string
-  subject: string
-  chapter: string
-  topic: string
-  examType: string
-  publishedYear: string
-  questionFact: string
-  tag: string
-}
-
 const BULK_META_KEY = 'dq_bulk_meta_v1'
-const BULK_PRESETS_KEY = 'dq_bulk_presets_v1'
 
 function ReviewApp({ bootToken, bootUser, showTitle = true, onLogout }: ReviewAppProps) {
   const [batches, setBatches] = useState<BatchSummary[]>([])
@@ -130,6 +119,7 @@ function ReviewApp({ bootToken, bootUser, showTitle = true, onLogout }: ReviewAp
   const [filter, setFilter] = useState<string>('all')
   const [filterExamType, setFilterExamType] = useState('')
   const [filterMissingAssets, setFilterMissingAssets] = useState(false)
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
   const [nowTs, setNowTs] = useState(Date.now())
   const [uploading, setUploading] = useState(false)
   const [uploadProgress, setUploadProgress] = useState('')
@@ -162,8 +152,6 @@ function ReviewApp({ bootToken, bootUser, showTitle = true, onLogout }: ReviewAp
   const [bulkPageStart, setBulkPageStart] = useState('')
   const [bulkPageEnd, setBulkPageEnd] = useState('')
   const [bulkBusy, setBulkBusy] = useState(false)
-  const [bulkPresetName, setBulkPresetName] = useState('')
-  const [bulkPresets, setBulkPresets] = useState<BulkPreset[]>([])
   const [committedBulkSubject, setCommittedBulkSubject] = useState('')
   const [committedBulkChapter, setCommittedBulkChapter] = useState('')
   const [committedBulkTopic, setCommittedBulkTopic] = useState('')
@@ -196,6 +184,7 @@ function ReviewApp({ bootToken, bootUser, showTitle = true, onLogout }: ReviewAp
   const [recentlyAddedQuestionPin, setRecentlyAddedQuestionPin] = useState<{ questionNumber: number; sourcePage: number } | null>(null)
   const refreshTimer = useRef<number | null>(null)
   const autoRefreshTimer = useRef<number | null>(null)
+  const localQuestionPatchesRef = useRef<Record<string, Partial<Question>>>({})
   const userSetPageRef = useRef(false)
   const lastAutoPageRef = useRef<number | null>(null)
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
@@ -260,13 +249,6 @@ function ReviewApp({ bootToken, bootUser, showTitle = true, onLogout }: ReviewAp
         if (typeof parsed?.publishedYear === 'string') setBulkPublishedYear(parsed.publishedYear)
         if (typeof parsed?.questionFact === 'string') setBulkQuestionFact(parsed.questionFact)
         if (typeof parsed?.tag === 'string') setBulkTag(parsed.tag)
-      }
-      const presetsRaw = localStorage.getItem(BULK_PRESETS_KEY)
-      if (presetsRaw) {
-        const parsedPresets = JSON.parse(presetsRaw)
-        if (Array.isArray(parsedPresets)) {
-          setBulkPresets(parsedPresets)
-        }
       }
     } catch {
       // ignore storage errors
@@ -361,53 +343,6 @@ function ReviewApp({ bootToken, bootUser, showTitle = true, onLogout }: ReviewAp
     }
   }, [expressUrl, token])
 
-  function applyPreset(preset: BulkPreset) {
-    setBulkSubject(preset.subject || '')
-    setBulkChapter(preset.chapter || '')
-    setBulkTopic(preset.topic || '')
-    setBulkExamType(preset.examType || '')
-    setBulkPublishedYear(preset.publishedYear || '')
-    setBulkQuestionFact(preset.questionFact || '')
-    setBulkTag(preset.tag || '')
-    setUiNotice(`Applied preset: ${preset.name}`)
-  }
-
-  function savePreset() {
-    const name = bulkPresetName.trim()
-    if (!name) {
-      alert('Enter a preset name.')
-      return
-    }
-    const next: BulkPreset = {
-      name,
-      subject: bulkSubject.trim(),
-      chapter: bulkChapter.trim(),
-      topic: bulkTopic.trim(),
-      examType: bulkExamType.trim(),
-      publishedYear: bulkPublishedYear.trim(),
-      questionFact: bulkQuestionFact.trim(),
-      tag: bulkTag.trim()
-    }
-    const updated = [...bulkPresets.filter(p => p.name !== name), next]
-    setBulkPresets(updated)
-    setBulkPresetName('')
-    try {
-      localStorage.setItem(BULK_PRESETS_KEY, JSON.stringify(updated))
-    } catch {
-      // ignore storage errors
-    }
-  }
-
-  function removePreset(name: string) {
-    const updated = bulkPresets.filter(p => p.name !== name)
-    setBulkPresets(updated)
-    try {
-      localStorage.setItem(BULK_PRESETS_KEY, JSON.stringify(updated))
-    } catch {
-      // ignore storage errors
-    }
-  }
-
   function handleLogout() {
     localStorage.removeItem('token')
     localStorage.removeItem('username')
@@ -476,6 +411,15 @@ function ReviewApp({ bootToken, bootUser, showTitle = true, onLogout }: ReviewAp
       }
     }
   }, [currentBatch, batches, currentPage, pageSize])
+
+  useEffect(() => {
+    localQuestionPatchesRef.current = {}
+  }, [currentBatch])
+
+  function mergeQuestionWithLocalPatch(q: Question) {
+    const patch = localQuestionPatchesRef.current[q.question_id]
+    return patch ? { ...q, ...patch } : q
+  }
 
   async function loadBatches() {
     const res = await apiFetch(`${API_URL}/draft/drafts`, { headers: authHeaders() })
@@ -594,7 +538,10 @@ function ReviewApp({ bootToken, bootUser, showTitle = true, onLogout }: ReviewAp
     const res = await apiFetch(`${API_URL}/draft/${batchId}?page=${page}&limit=${safeLimit}`, { headers: authHeaders() })
     if (res.ok) {
       const data = await res.json()
-      setDraft(data)
+      const mergedQuestions = Array.isArray(data.questions)
+        ? data.questions.map((q: Question) => mergeQuestionWithLocalPatch(q))
+        : data.questions
+      setDraft({ ...data, questions: mergedQuestions })
       if (batchId !== currentBatch) {
         setValidationFilter('all')
         setValidationFailedIds(new Set())
@@ -705,7 +652,7 @@ function ReviewApp({ bootToken, bootUser, showTitle = true, onLogout }: ReviewAp
     }
   }
 
-  async function verifyQuestion(qid: string, refresh = true) {
+  async function verifyQuestion(qid: string, refresh = true, contextQuestion?: Question) {
     console.info('[verify] start', { qid, batch: currentBatch })
     const res = await apiFetch(`${API_URL}/draft/${currentBatch}/verify/${qid}`, {
       method: 'POST',
@@ -713,6 +660,18 @@ function ReviewApp({ bootToken, bootUser, showTitle = true, onLogout }: ReviewAp
     })
     console.info('[verify] response', { qid, status: res.status })
     updateLocalQuestion(qid, { verification_state: 'verified' } as any)
+    if (contextQuestion) {
+      if (filter === 'pending') {
+        setFilter('all')
+      }
+      if (validationFilter === 'failed' || validationFilter === 'valid') {
+        setValidationFilter('all')
+      }
+      if (contextQuestion.source_page) {
+        setSourcePage(contextQuestion.source_page)
+      }
+      setUiNotice(`Verified Q${contextQuestion.questionNumber || ''}.`)
+    }
     if (refresh) {
       scheduleDraftRefresh(currentBatch!)
     }
@@ -864,6 +823,10 @@ function ReviewApp({ bootToken, bootUser, showTitle = true, onLogout }: ReviewAp
   }
 
   function updateLocalQuestion(qid: string, patch: Partial<Question>) {
+    localQuestionPatchesRef.current[qid] = {
+      ...(localQuestionPatchesRef.current[qid] || {}),
+      ...patch
+    }
     setDraft(prev => {
       if (!prev) return prev
       const nextQuestions = (prev.questions || []).map(q => {
@@ -1869,7 +1832,7 @@ function ReviewApp({ bootToken, bootUser, showTitle = true, onLogout }: ReviewAp
     try {
       setAllLoading(true)
       const all = await fetchAllQuestions(batchId)
-      setAllQuestions(all)
+      setAllQuestions(all.map(q => mergeQuestionWithLocalPatch(q)))
     } finally {
       setAllLoading(false)
     }
@@ -1946,17 +1909,19 @@ function ReviewApp({ bootToken, bootUser, showTitle = true, onLogout }: ReviewAp
     }, 0)
   }
 
-  async function validateBulk(mode: 'all' | 'selected' | 'range' = 'all') {
+  async function validateBulk(mode: 'all' | 'selected' | 'range' = 'all', explicitQuestions?: Question[]) {
     if (!draft?.questions) return
     let sticky = false
     if (!bulkExamType.trim()) {
       alert('Select exam type (NEET/JEE/JEE Advanced) before validation.')
       return
     }
-    const source =
+    const source = explicitQuestions && explicitQuestions.length > 0
+      ? explicitQuestions :
       mode === 'selected' ? getQuestionsForSelected() :
       mode === 'range' ? await getQuestionsForRange() :
       await ensureAllQuestions()
+    const preserveView = mode === 'selected' || Boolean(explicitQuestions && explicitQuestions.length > 0)
       const payload = buildBulkPayload(source)
       if (!payload.length || !currentBatch) {
         alert('No verified questions to validate')
@@ -2021,16 +1986,22 @@ function ReviewApp({ bootToken, bootUser, showTitle = true, onLogout }: ReviewAp
         setActionStatus({ state: 'error', message: `Validation failed for ${nonDuplicateFailed} question(s).` })
         setActionSticky(true)
         sticky = true
-        setValidationFilter('failed')
-        setFilter('all')
-        setSourcePage(null)
-        setUiNotice('Showing failed questions.')
+        if (!preserveView) {
+          setValidationFilter('failed')
+          setFilter('all')
+          setSourcePage(null)
+          setUiNotice('Showing failed questions.')
+        } else {
+          setUiNotice('Validation completed for the selected question(s).')
+        }
       } else {
         setActionStatus({ state: 'success', message: `Validation passed (${normalized.validCount || 0}).` })
         setActionSticky(false)
         sticky = false
-        setValidationFilter('all')
-        setFilter('all')
+        if (!preserveView) {
+          setValidationFilter('all')
+          setFilter('all')
+        }
       }
       if (autoMarkDuplicates && duplicateIds.size > 0 && currentBatch) {
         const updates = Array.from(duplicateIds).map(id => ({
@@ -2101,17 +2072,19 @@ function ReviewApp({ bootToken, bootUser, showTitle = true, onLogout }: ReviewAp
     return parts.join('\n')
   }
 
-  async function commitBulk(mode: 'all' | 'selected' | 'range' = 'all') {
+  async function commitBulk(mode: 'all' | 'selected' | 'range' = 'all', explicitQuestions?: Question[]) {
     if (!draft?.questions) return
     let sticky = false
     if (!bulkExamType.trim()) {
       alert('Select exam type (NEET/JEE/JEE Advanced) before commit.')
       return
     }
-    const source =
+    const source = explicitQuestions && explicitQuestions.length > 0
+      ? explicitQuestions :
       mode === 'selected' ? getQuestionsForSelected() :
       mode === 'range' ? await getQuestionsForRange() :
       await ensureAllQuestions()
+    const preserveView = mode === 'selected' || Boolean(explicitQuestions && explicitQuestions.length > 0)
     const summary = summarizeCommit(source)
     if (summary.verifiedCount === 0) {
       alert('No verified questions to commit.')
@@ -2208,8 +2181,10 @@ function ReviewApp({ bootToken, bootUser, showTitle = true, onLogout }: ReviewAp
         setActionStatus({ state: 'success', message: `Inserted ${normalized.insertedCount} question(s).` })
         setActionSticky(false)
         sticky = false
-        setValidationFilter(normalized.failedCount && normalized.failedCount > 0 ? 'failed' : 'all')
-        setFilter('all')
+        if (!preserveView) {
+          setValidationFilter(normalized.failedCount && normalized.failedCount > 0 ? 'failed' : 'all')
+          setFilter('all')
+        }
         if (validIds.size > 0) {
           const updates = Array.from(validIds).map(id => ({
             question_id: id,
@@ -2222,19 +2197,25 @@ function ReviewApp({ bootToken, bootUser, showTitle = true, onLogout }: ReviewAp
           await refreshAllIfLoaded()
         }
         if (normalized.failedCount && normalized.failedCount > 0) {
-          setSourcePage(null)
-          setShowValidation(true)
-          setUiNotice('Showing failed questions.')
+          if (!preserveView) {
+            setSourcePage(null)
+            setShowValidation(true)
+            setUiNotice('Showing failed questions.')
+          } else {
+            setUiNotice('Commit finished for the selected question(s).')
+          }
         }
       } else {
         setActionStatus({ state: 'error', message: 'No questions inserted.' })
         setActionSticky(true)
         sticky = true
-        setValidationFilter('failed')
-        setFilter('all')
-        setSourcePage(null)
+        if (!preserveView) {
+          setValidationFilter('failed')
+          setFilter('all')
+          setSourcePage(null)
+        }
         setShowValidation(true)
-        setUiNotice('Showing failed questions.')
+        setUiNotice(preserveView ? 'Commit failed for the selected question(s).' : 'Showing failed questions.')
       }
       console.info('[commit] done', { inserted: normalized.insertedCount, failed: normalized.failedCount, skipped: normalized.skippedCount })
     } catch (err: any) {
@@ -2754,8 +2735,21 @@ function ReviewApp({ bootToken, bootUser, showTitle = true, onLogout }: ReviewAp
 
       {viewMode === 'review' && (
         <div className="main">
-          <aside className="sidebar" data-tour="sidebar">
-            <div className="upload-area">
+          <aside className={`sidebar ${sidebarCollapsed ? 'collapsed' : ''}`} data-tour="sidebar">
+            <div className="sidebar-topbar">
+              <button
+                className="btn small"
+                onClick={() => setSidebarCollapsed(prev => !prev)}
+                title={sidebarCollapsed ? 'Expand the left panel.' : 'Collapse the left panel to free more space for questions.'}
+              >
+                {sidebarCollapsed ? 'Show panel' : 'Hide panel'}
+              </button>
+            </div>
+            {!sidebarCollapsed && (
+              <>
+            <details className="upload-area" open>
+              <summary className="section-title">Upload and create</summary>
+              <div className="section-desc">Upload a PDF or DOCX, or add a blank question manually to the selected batch.</div>
               <label className="upload-label" title="Upload a PDF or DOCX to create a new batch.">
                 <span>{uploading ? 'Processing...' : 'Upload PDF/DOCX'}</span>
                 <input type="file" accept=".pdf,.docx" onChange={uploadFile} disabled={uploading} />
@@ -2772,7 +2766,7 @@ function ReviewApp({ bootToken, bootUser, showTitle = true, onLogout }: ReviewAp
                 </button>
               </div>
               {uploadProgress && <p className="progress">{uploadProgress}</p>}
-            </div>
+            </details>
 
             <h3>Batches</h3>
             {batches.map(b => (
@@ -2827,6 +2821,8 @@ function ReviewApp({ bootToken, bootUser, showTitle = true, onLogout }: ReviewAp
                   </button>
                 </div>
             ))}
+              </>
+            )}
           </aside>
 
           <main className="content">
@@ -3176,31 +3172,11 @@ function ReviewApp({ bootToken, bootUser, showTitle = true, onLogout }: ReviewAp
                   </button>
                 </div>
               </details>
-              <details className="bulk-section" open>
-                <summary className="section-title">Step 3 — Save a template (optional)</summary>
-                <div className="section-desc">Use this if you reuse the same Subject/Chapter/Topic again.</div>
-                <div className="bulk-row">
-                  <input
-                    type="text"
-                    placeholder="Template name"
-                    value={bulkPresetName}
-                    onChange={e => setBulkPresetName(e.target.value)}
-                  />
-                  <button className="btn small" disabled={bulkBusy} onClick={savePreset} title="Save the current metadata as a template.">
-                    Save template
-                  </button>
-                  {bulkPresets.map(preset => (
-                    <div key={preset.name} style={{ display: 'inline-flex', gap: '6px' }}>
-                      <button className="btn small" onClick={() => applyPreset(preset)} title={`Apply preset ${preset.name}.`}>
-                        {preset.name}
-                      </button>
-                      <button className="btn small" onClick={() => removePreset(preset.name)} title={`Delete preset ${preset.name}.`}>
-                        ×
-                      </button>
-                    </div>
-                  ))}
-                </div>
-              </details>
+              <div className="bulk-section">
+                <div className="section-title">Step 3 — How to choose difficulty level and type</div>
+                <div className="section-desc">Use this guide while assigning metadata before validate or commit.</div>
+                <DifficultyGuide />
+              </div>
               <details className="bulk-section" open>
                 <summary className="section-title">Step 4 — Apply to a Question # range (optional)</summary>
                 <div className="section-desc">Use this when you only want a specific block of questions.</div>
@@ -3358,9 +3334,12 @@ function ReviewApp({ bootToken, bootUser, showTitle = true, onLogout }: ReviewAp
                         index={idx}
                         batchId={currentBatch || ''}
                         difficultyTypes={difficultyTypes}
+                        validationStatus={validationFailedIds.has(q.question_id) ? 'failed' : validationValidIds.has(q.question_id) ? 'valid' : 'pending'}
                         assetUrl={assetUrl}
                         onUploadAsset={uploadAsset}
-                        onVerify={() => verifyQuestion(q.question_id)}
+                        onVerify={() => verifyQuestion(q.question_id, true, q)}
+                        onValidate={() => validateBulk('selected', [q])}
+                        onCommit={() => commitBulk('selected', [q])}
                         onReject={() => rejectQuestion(q.question_id)}
                         onUpdate={(patch) => updateQuestion(q.question_id, patch)}
                         onToggleCorrect={(letter) => toggleCorrect(q.question_id, letter)}
@@ -3441,9 +3420,12 @@ interface QuestionCardProps {
   index: number
   batchId: string
   difficultyTypes: string[]
+  validationStatus: 'failed' | 'valid' | 'pending'
   assetUrl: (name?: string) => string
   onUploadAsset: (file: File) => Promise<string | null>
   onVerify: () => void
+  onValidate: () => void
+  onCommit: () => void
   onReject: () => void
   onUpdate: (patch: Partial<Question>) => void
   onToggleCorrect: (letter: string) => void
@@ -3454,7 +3436,7 @@ interface QuestionCardProps {
   pageImages: { id: string; filename: string }[]
 }
 
-function QuestionCard({ question: q, index, batchId, difficultyTypes, assetUrl, onUploadAsset, onVerify, onReject, onUpdate, onToggleCorrect, onApplyAnswer, onDelete, selected, onToggleSelect, pageImages }: QuestionCardProps) {
+function QuestionCard({ question: q, index, batchId, difficultyTypes, validationStatus, assetUrl, onUploadAsset, onVerify, onValidate, onCommit, onReject, onUpdate, onToggleCorrect, onApplyAnswer, onDelete, selected, onToggleSelect, pageImages }: QuestionCardProps) {
   const [editMode, setEditMode] = useState(false)
   const [text, setText] = useState(q.questionText)
   const [explanation, setExplanation] = useState(q.explanation || '')
@@ -3650,6 +3632,10 @@ function QuestionCard({ question: q, index, batchId, difficultyTypes, assetUrl, 
             {q.exam_type && <span className="badge type">{q.exam_type}</span>}
             {(q as any).published_year && <span className="badge level">Year {(q as any).published_year}</span>}
             <span className={`badge state ${q.verification_state}`}>{q.verification_state}</span>
+            <span className={`badge validation ${validationStatus}`}>{validationStatus === 'pending' ? 'Validation pending' : `Validation ${validationStatus}`}</span>
+            <span className={`badge commit ${q.verification_state === 'committed' ? 'done' : 'pending'}`}>
+              {q.verification_state === 'committed' ? 'Commit done' : 'Commit pending'}
+            </span>
             <span className="badge page">Page {q.source_page}</span>
             {q.correct_option_letters && (
               <span className="badge level">Answer: {q.correct_option_letters}</span>
@@ -3750,6 +3736,9 @@ function QuestionCard({ question: q, index, batchId, difficultyTypes, assetUrl, 
               ))}
               <option value="unknown">unknown</option>
             </select>
+            <div style={{ width: '100%' }}>
+              <DifficultyGuide compact />
+            </div>
           </>
         ) : (
           <div className="committed-meta">
@@ -3868,6 +3857,8 @@ function QuestionCard({ question: q, index, batchId, difficultyTypes, assetUrl, 
           </>
         )}
         <button className="btn verify" onClick={onVerify} title="Mark this question as verified.">Verify</button>
+        <button className="btn save" onClick={onValidate} title="Validate only this question.">Validate</button>
+        <button className="btn save" onClick={onCommit} title="Commit only this question.">Commit</button>
         <button className="btn reject" onClick={onReject} title="Mark this question as rejected.">Reject</button>
         <button className="btn reject" onClick={onDelete} title="Delete this question from the batch.">Delete</button>
       </div>

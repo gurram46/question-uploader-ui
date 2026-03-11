@@ -125,8 +125,42 @@
   overflow-y: auto;
 }
 
+.review-scope .sidebar.collapsed {
+  width: 88px;
+  padding: 12px;
+  overflow: hidden;
+}
+
+.review-scope .sidebar-topbar {
+  display: flex;
+  justify-content: flex-end;
+  margin-bottom: 12px;
+}
+
+.review-scope .sidebar.collapsed .sidebar-topbar {
+  justify-content: center;
+  margin-bottom: 0;
+}
+
+.review-scope .sidebar.collapsed .btn.small {
+  min-width: 0;
+  width: 100%;
+  padding: 10px 8px;
+}
+
 .review-scope .upload-area {
   margin-bottom: 12px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid #e5e7eb;
+}
+
+.review-scope .upload-area summary {
+  cursor: pointer;
+  list-style: none;
+}
+
+.review-scope .upload-area summary::-webkit-details-marker {
+  display: none;
 }
 
 .review-scope .upload-label {
@@ -390,6 +424,36 @@
   background: #ef4444;
   border-color: #dc2626;
   color: #ffffff;
+}
+
+.review-scope .badge.validation.pending {
+  background: #f8fafc;
+  border-color: #cbd5e1;
+  color: #475569;
+}
+
+.review-scope .badge.validation.valid {
+  background: #dcfce7;
+  border-color: #22c55e;
+  color: #166534;
+}
+
+.review-scope .badge.validation.failed {
+  background: #fee2e2;
+  border-color: #ef4444;
+  color: #991b1b;
+}
+
+.review-scope .badge.commit.pending {
+  background: #eff6ff;
+  border-color: #93c5fd;
+  color: #1d4ed8;
+}
+
+.review-scope .badge.commit.done {
+  background: #dcfce7;
+  border-color: #22c55e;
+  color: #166534;
 }
 
   .review-scope .question-text {

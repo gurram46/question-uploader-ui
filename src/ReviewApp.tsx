@@ -1105,7 +1105,7 @@ function ReviewApp({ bootToken, bootUser, showTitle = true, onLogout }: ReviewAp
         subjectName: ((q as any).subject_name || '')?.trim().toLowerCase(),
         chapterName: ((q as any).chapter_name || '')?.trim().toLowerCase(),
         topicName: ((q as any).topic_name || '')?.trim().toLowerCase(),
-        examType: (q.exam_type || bulkExamType).trim().toLowerCase(),
+        examType: (q.exam_type || '').trim().toLowerCase(),
         publishedYear: (q as any).published_year ?? null,
         questionFact: ((q as any).question_fact || '').trim(),
         batchTag: bulkTag.trim(),
@@ -1444,9 +1444,13 @@ function ReviewApp({ bootToken, bootUser, showTitle = true, onLogout }: ReviewAp
     setUiNotice(`Applied ${result.updated} answers.`)
   }
 
-  async function applyParsedAnswerPairs(pairs: Array<{ number: number; answer: string }>) {
-    if (!currentBatch || !pairs.length) return 0
-    const targets = await ensureAllQuestions()
+  async function applyParsedAnswerPairs(
+    pairs: Array<{ number: number; answer: string }>,
+    batchIdOverride?: string
+  ): Promise<{ updated: number; matched: number; skippedExisting: number }> {
+    const targetBatch = (batchIdOverride || currentBatch || '').trim()
+    if (!targetBatch || !pairs.length) return { updated: 0, matched: 0, skippedExisting: 0 }
+    const targets = await ensureAllQuestions(targetBatch)
     const key: Record<number, string> = {}
     for (const pair of pairs) {
       const qnum = Number(pair?.number)
@@ -1457,11 +1461,18 @@ function ReviewApp({ bootToken, bootUser, showTitle = true, onLogout }: ReviewAp
     }
 
     const updates: any[] = []
+    let matched = 0
+    let skippedExisting = 0
     for (const q of targets) {
       const qnum = Number((q as any).questionNumber || (q as any).question_number)
       if (!Number.isFinite(qnum)) continue
       const answer = key[qnum]
       if (!answer) continue
+      matched += 1
+      if (String(q.correct_option_letters || '').trim()) {
+        skippedExisting += 1
+        continue
+      }
       const updatedOptions = applyAnswerToOptions(q.options || [], answer)
       updates.push({
         question_id: q.question_id,
@@ -1469,17 +1480,18 @@ function ReviewApp({ bootToken, bootUser, showTitle = true, onLogout }: ReviewAp
       })
     }
 
-    if (!updates.length) return 0
-    const result = await bulkUpdateRequest({ updates })
-    if (!result) return 0
-    await loadDraft(currentBatch)
+    if (!updates.length) return { updated: 0, matched, skippedExisting }
+    const result = await bulkUpdateRequest({ updates }, targetBatch)
+    if (!result) return { updated: 0, matched, skippedExisting }
+    await loadDraft(targetBatch)
     await refreshAllIfLoaded()
-    return Number(result.updated || 0)
+    return { updated: Number(result.updated || 0), matched, skippedExisting }
   }
 
   async function uploadAnswerKeyFile(file: File) {
     if (!file) return
     if (!currentBatch) return
+    const selectedBatch = currentBatch
     setAnswerKeyStatus('Parsing answer key...')
     setAnswerKeyPairs([])
     const form = new FormData()
@@ -1501,11 +1513,15 @@ function ReviewApp({ bootToken, bootUser, showTitle = true, onLogout }: ReviewAp
     }
     const data = await res.json()
     const pairs = Array.isArray(data.pairs) ? data.pairs : []
+    let detectedMin: number | null = null
+    let detectedMax: number | null = null
     setAnswerKeyPairs(pairs)
     if (pairs.length > 0) {
       const nums = pairs.map((p: any) => Number(p.number)).filter((n: any) => Number.isFinite(n))
       const min = nums.length ? Math.min(...nums) : null
       const max = nums.length ? Math.max(...nums) : null
+      detectedMin = min
+      detectedMax = max
       setAnswerKeyDetected({ count: nums.length, min, max })
     } else {
       setAnswerKeyDetected({ count: 0, min: null, max: null })
@@ -1513,15 +1529,29 @@ function ReviewApp({ bootToken, bootUser, showTitle = true, onLogout }: ReviewAp
     if (pairs.length > 0) {
       const keyText = pairs.map((p: any) => `${p.number}.${p.answer}`).join(' ')
       setBulkAnswerKey(keyText)
-      setAnswerKeyStatus(`Parsed ${pairs.length} answers. Applying...`)
+      const qRange = detectedMin !== null && detectedMax !== null
+        ? ` Q${detectedMin}-Q${detectedMax}.`
+        : ''
+      setAnswerKeyStatus(`Parsed ${pairs.length} answers for batch ${selectedBatch}.${qRange} Applying to missing answers only...`)
       setBulkBusy(true)
-      const applied = await applyParsedAnswerPairs(pairs)
+      const result = await applyParsedAnswerPairs(pairs, selectedBatch)
       setBulkBusy(false)
-      if (applied > 0) {
-        setAnswerKeyStatus(`Parsed ${pairs.length} answers and applied ${applied}.`)
-        setUiNotice(`Applied ${applied} answers from answer sheet.`)
+      if (result.updated > 0) {
+        const statusParts = [
+          `Parsed ${pairs.length} answers`,
+          `matched ${result.matched} questions in batch ${selectedBatch}`,
+          `applied ${result.updated} missing answers`,
+        ]
+        if (result.skippedExisting > 0) {
+          statusParts.push(`left ${result.skippedExisting} existing answers unchanged`)
+        }
+        setAnswerKeyStatus(`${statusParts.join(', ')}.`)
+        setUiNotice(`Answer sheet applied to batch ${selectedBatch}: ${result.updated} missing answers filled, ${result.skippedExisting} existing answers preserved.`)
       } else {
-        setAnswerKeyStatus(`Parsed ${pairs.length} answers, but no matching questions were updated.`)
+        const noUpdateReason = result.skippedExisting > 0
+          ? `all ${result.matched} matched questions already had answers`
+          : 'no matching questions were found in the selected batch'
+        setAnswerKeyStatus(`Parsed ${pairs.length} answers, but ${noUpdateReason}.`)
       }
     } else {
       setAnswerKeyStatus('No answers parsed.')
@@ -1829,10 +1859,11 @@ function ReviewApp({ bootToken, bootUser, showTitle = true, onLogout }: ReviewAp
     return out
   }
 
-  async function ensureAllQuestions(): Promise<Question[]> {
-    if (!currentBatch) return []
-    if (allQuestions) return allQuestions
-    const fetched = await fetchAllQuestions(currentBatch)
+  async function ensureAllQuestions(batchIdOverride?: string): Promise<Question[]> {
+    const targetBatch = (batchIdOverride || currentBatch || '').trim()
+    if (!targetBatch) return []
+    if (!batchIdOverride && allQuestions) return allQuestions
+    const fetched = await fetchAllQuestions(targetBatch)
     setAllQuestions(fetched)
     return fetched
   }
@@ -1847,9 +1878,10 @@ function ReviewApp({ bootToken, bootUser, showTitle = true, onLogout }: ReviewAp
     }
   }
 
-  async function bulkUpdateRequest(body: any) {
-    if (!currentBatch) return null
-    const res = await apiFetch(`${API_URL}/draft/${currentBatch}/bulk-update`, {
+  async function bulkUpdateRequest(body: any, batchIdOverride?: string) {
+    const targetBatch = (batchIdOverride || currentBatch || '').trim()
+    if (!targetBatch) return null
+    const res = await apiFetch(`${API_URL}/draft/${targetBatch}/bulk-update`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', ...authHeaders() },
       body: JSON.stringify(body)
@@ -1921,10 +1953,6 @@ function ReviewApp({ bootToken, bootUser, showTitle = true, onLogout }: ReviewAp
   async function validateBulk(mode: 'all' | 'selected' | 'range' = 'all', explicitQuestions?: Question[]) {
     if (!draft?.questions) return
     let sticky = false
-    if (!bulkExamType.trim()) {
-      alert('Select exam type (NEET/JEE/JEE Advanced) before validation.')
-      return
-    }
     const source = explicitQuestions && explicitQuestions.length > 0
       ? explicitQuestions :
       mode === 'selected' ? getQuestionsForSelected() :
@@ -2043,7 +2071,7 @@ function ReviewApp({ bootToken, bootUser, showTitle = true, onLogout }: ReviewAp
     const missingSubject = verified.filter(q => !String((q.subject_name || '')).trim()).length
     const missingChapter = verified.filter(q => !String((q.chapter_name || '')).trim()).length
     const missingTopic = verified.filter(q => !String((q.topic_name || '')).trim()).length
-    const missingExam = verified.filter(q => !String((q.exam_type || bulkExamType || '')).trim()).length
+    const missingExam = verified.filter(q => !String((q.exam_type || '')).trim()).length
     const missingDifficulty = verified.filter(q => !q.difficulty_level).length
     const missingType = verified.filter(q => !String((q.questionType || q.question_type || '')).trim()).length
     const missingOptions = verified.filter(q => !(q.options || []).some(o => o.text && String(o.text).trim())).length
@@ -2084,10 +2112,6 @@ function ReviewApp({ bootToken, bootUser, showTitle = true, onLogout }: ReviewAp
   async function commitBulk(mode: 'all' | 'selected' | 'range' = 'all', explicitQuestions?: Question[]) {
     if (!draft?.questions) return
     let sticky = false
-    if (!bulkExamType.trim()) {
-      alert('Select exam type (NEET/JEE/JEE Advanced) before commit.')
-      return
-    }
     const source = explicitQuestions && explicitQuestions.length > 0
       ? explicitQuestions :
       mode === 'selected' ? getQuestionsForSelected() :
@@ -3022,7 +3046,7 @@ function ReviewApp({ bootToken, bootUser, showTitle = true, onLogout }: ReviewAp
               {uiNotice && <div className="committed-meta">{uiNotice}</div>}
               <details className="bulk-section" open>
                 <summary className="section-title">Step 1 — Upload Answer Sheet</summary>
-                <div className="section-desc">Upload the answer key sheet. It will auto-map answers for this batch.</div>
+                <div className="section-desc">Upload the answer key sheet. It will auto-map missing answers for the selected batch and leave existing answers untouched for review.</div>
                 <div className="bulk-row">
                   <label className="upload-label answer-upload" title="Upload an answer key sheet to auto-map answers.">
                     <span>Upload Answer Sheet</span>
@@ -3038,9 +3062,9 @@ function ReviewApp({ bootToken, bootUser, showTitle = true, onLogout }: ReviewAp
                   {answerKeyStatus && <div className="answer-status">{answerKeyStatus}</div>}
                   {answerKeyDetected.count > 0 && (
                     <div className="answer-status">
-                      Detected {answerKeyDetected.count} answers
+                      Parsed {answerKeyDetected.count} answers for this batch
                       {answerKeyDetected.min !== null && answerKeyDetected.max !== null
-                        ? ` (Q${answerKeyDetected.min}–Q${answerKeyDetected.max})`
+                        ? `, detected range Q${answerKeyDetected.min}-Q${answerKeyDetected.max}`
                         : ''}
                     </div>
                   )}

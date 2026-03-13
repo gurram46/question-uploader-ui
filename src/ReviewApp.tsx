@@ -100,6 +100,16 @@ interface CommittedQuestion {
   options?: Option[] | string
 }
 
+interface AnswerKeyParseResult {
+  pairs?: Array<{ number: number; answer: string }>
+  parser_mode?: string
+  pair_count?: number
+  auto_apply_safe?: boolean
+  confidence_level?: string
+  confidence_score?: number
+  confidence_notes?: string[] | string
+}
+
 const API_URL = getPythonBase()
 const EXPRESS_URL = getExpressBase()
 
@@ -164,6 +174,19 @@ function ReviewApp({ bootToken, bootUser, showTitle = true, onLogout }: ReviewAp
   const [answerKeyPairs, setAnswerKeyPairs] = useState<{ number: number; answer: string }[]>([])
   const [answerKeyStatus, setAnswerKeyStatus] = useState('')
   const [answerKeyDetected, setAnswerKeyDetected] = useState<{ count: number; min: number | null; max: number | null }>({ count: 0, min: null, max: null })
+  const [answerKeyParseMeta, setAnswerKeyParseMeta] = useState<{
+    parserMode: string
+    autoApplySafe: boolean
+    confidenceLevel: string
+    confidenceScore: number | null
+    confidenceNotes: string[]
+  } | null>(null)
+  const [answerKeySummary, setAnswerKeySummary] = useState<{
+    parsedCount: number
+    matchedCount: number
+    appliedCount: number
+    preservedCount: number
+  } | null>(null)
   const [answerKeyMaxPages, setAnswerKeyMaxPages] = useState('20')
   const [answerKeyMaxQ, setAnswerKeyMaxQ] = useState('1200')
   const [answerKeyMinQ, setAnswerKeyMinQ] = useState('1')
@@ -1494,6 +1517,8 @@ function ReviewApp({ bootToken, bootUser, showTitle = true, onLogout }: ReviewAp
     const selectedBatch = currentBatch
     setAnswerKeyStatus('Parsing answer key...')
     setAnswerKeyPairs([])
+    setAnswerKeyParseMeta(null)
+    setAnswerKeySummary(null)
     const form = new FormData()
     form.append('file', file)
     const maxPages = Math.max(1, Math.min(20, Number(answerKeyMaxPages) || 6))
@@ -1511,8 +1536,20 @@ function ReviewApp({ bootToken, bootUser, showTitle = true, onLogout }: ReviewAp
       setAnswerKeyStatus(msg || 'Failed to parse answer key')
       return
     }
-    const data = await res.json()
+    const data = await res.json() as AnswerKeyParseResult
     const pairs = Array.isArray(data.pairs) ? data.pairs : []
+    const parserMode = String(data.parser_mode || 'hybrid')
+    const autoApplySafe = Boolean(data.auto_apply_safe)
+    const confidenceLevel = String(data.confidence_level || 'unknown')
+    const confidenceScore = typeof data.confidence_score === 'number' && Number.isFinite(data.confidence_score)
+      ? data.confidence_score
+      : null
+    const confidenceNotes = Array.isArray(data.confidence_notes)
+      ? data.confidence_notes.map(note => String(note))
+      : data.confidence_notes
+        ? [String(data.confidence_notes)]
+        : []
+    setAnswerKeyParseMeta({ parserMode, autoApplySafe, confidenceLevel, confidenceScore, confidenceNotes })
     let detectedMin: number | null = null
     let detectedMax: number | null = null
     setAnswerKeyPairs(pairs)
@@ -1532,29 +1569,57 @@ function ReviewApp({ bootToken, bootUser, showTitle = true, onLogout }: ReviewAp
       const qRange = detectedMin !== null && detectedMax !== null
         ? ` Q${detectedMin}-Q${detectedMax}.`
         : ''
-      setAnswerKeyStatus(`Parsed ${pairs.length} answers for batch ${selectedBatch}.${qRange} Applying to missing answers only...`)
-      setBulkBusy(true)
-      const result = await applyParsedAnswerPairs(pairs, selectedBatch)
-      setBulkBusy(false)
-      if (result.updated > 0) {
-        const statusParts = [
-          `Parsed ${pairs.length} answers`,
-          `matched ${result.matched} questions in batch ${selectedBatch}`,
-          `applied ${result.updated} missing answers`,
-        ]
-        if (result.skippedExisting > 0) {
-          statusParts.push(`left ${result.skippedExisting} existing answers unchanged`)
-        }
-        setAnswerKeyStatus(`${statusParts.join(', ')}.`)
-        setUiNotice(`Answer sheet applied to batch ${selectedBatch}: ${result.updated} missing answers filled, ${result.skippedExisting} existing answers preserved.`)
+      const confidenceBits = [
+        `confidence ${confidenceLevel}`,
+        confidenceScore !== null ? `score ${confidenceScore.toFixed(2)}` : '',
+        confidenceNotes.length ? confidenceNotes.join('; ') : '',
+      ].filter(Boolean).join(' | ')
+      if (!autoApplySafe) {
+        setAnswerKeyStatus(`Parsed ${pairs.length} answers for batch ${selectedBatch}.${qRange} Auto-apply was skipped because backend marked this parse as not safe (${confidenceBits}). Review the detected key before relying on it.`)
+        setAnswerKeySummary({
+          parsedCount: pairs.length,
+          matchedCount: 0,
+          appliedCount: 0,
+          preservedCount: 0,
+        })
+        setUiNotice(`Answer-sheet parse needs review for batch ${selectedBatch}. Backend confidence: ${confidenceBits}.`)
       } else {
-        const noUpdateReason = result.skippedExisting > 0
-          ? `all ${result.matched} matched questions already had answers`
-          : 'no matching questions were found in the selected batch'
-        setAnswerKeyStatus(`Parsed ${pairs.length} answers, but ${noUpdateReason}.`)
+        setAnswerKeyStatus(`Parsed ${pairs.length} answers for batch ${selectedBatch}.${qRange} Backend marked auto-apply as safe (${confidenceBits}). Applying to the selected batch only and preserving existing answers.`)
+        setBulkBusy(true)
+        const result = await applyParsedAnswerPairs(pairs, selectedBatch)
+        setBulkBusy(false)
+        setAnswerKeySummary({
+          parsedCount: pairs.length,
+          matchedCount: result.matched,
+          appliedCount: result.updated,
+          preservedCount: result.skippedExisting,
+        })
+        if (result.updated > 0) {
+          const statusParts = [
+            `Auto-apply safe (${confidenceBits})`,
+            `matched ${result.matched} questions in batch ${selectedBatch}`,
+            `applied ${result.updated} missing answers`,
+          ]
+          if (result.skippedExisting > 0) {
+            statusParts.push(`left ${result.skippedExisting} existing answers unchanged`)
+          }
+          setAnswerKeyStatus(`${statusParts.join(', ')}.`)
+          setUiNotice(`Answer sheet applied to batch ${selectedBatch}: ${result.updated} missing answers filled, ${result.skippedExisting} existing answers preserved.`)
+        } else {
+          const noUpdateReason = result.skippedExisting > 0
+            ? `all ${result.matched} matched questions already had answers`
+            : 'no matching questions were found in the selected batch'
+          setAnswerKeyStatus(`Auto-apply safe (${confidenceBits}), but ${noUpdateReason}.`)
+        }
       }
     } else {
       setAnswerKeyStatus('No answers parsed.')
+      setAnswerKeySummary({
+        parsedCount: 0,
+        matchedCount: 0,
+        appliedCount: 0,
+        preservedCount: 0,
+      })
     }
   }
 
@@ -3046,7 +3111,7 @@ function ReviewApp({ bootToken, bootUser, showTitle = true, onLogout }: ReviewAp
               {uiNotice && <div className="committed-meta">{uiNotice}</div>}
               <details className="bulk-section" open>
                 <summary className="section-title">Step 1 — Upload Answer Sheet</summary>
-                <div className="section-desc">Upload the answer key sheet. It will auto-map missing answers for the selected batch and leave existing answers untouched for review.</div>
+                <div className="section-desc">Upload the answer key sheet. Apply is restricted to the selected batch only, and existing answers are preserved by default so the manual review flow stays safe.</div>
                 <div className="bulk-row">
                   <label className="upload-label answer-upload" title="Upload an answer key sheet to auto-map answers.">
                     <span>Upload Answer Sheet</span>
@@ -3062,13 +3127,34 @@ function ReviewApp({ bootToken, bootUser, showTitle = true, onLogout }: ReviewAp
                   {answerKeyStatus && <div className="answer-status">{answerKeyStatus}</div>}
                   {answerKeyDetected.count > 0 && (
                     <div className="answer-status">
-                      Parsed {answerKeyDetected.count} answers for this batch
+                      Parsed {answerKeyDetected.count} answers for the selected batch
                       {answerKeyDetected.min !== null && answerKeyDetected.max !== null
                         ? `, detected range Q${answerKeyDetected.min}-Q${answerKeyDetected.max}`
                         : ''}
                     </div>
                   )}
+                  {answerKeyParseMeta && (
+                    <div className="answer-status">
+                      Parse mode: {answerKeyParseMeta.parserMode} | Confidence: {answerKeyParseMeta.confidenceLevel}
+                      {answerKeyParseMeta.confidenceScore !== null ? ` (${answerKeyParseMeta.confidenceScore.toFixed(2)})` : ''}
+                      {answerKeyParseMeta.autoApplySafe ? ' | auto-apply safe for missing answers only' : ' | review required before applying'}
+                      {answerKeyParseMeta.confidenceNotes.length ? ` | ${answerKeyParseMeta.confidenceNotes.join('; ')}` : ''}
+                    </div>
+                  )}
                 </div>
+                {currentBatch && (
+                  <div className="answer-status" style={{ marginTop: '-4px', marginBottom: '10px' }}>
+                    Target batch: <strong>{currentBatch}</strong>. Existing answers will be kept unless you edit them manually later.
+                  </div>
+                )}
+                {answerKeySummary && (
+                  <div className="bulk-row" style={{ gap: '10px', marginBottom: '10px' }}>
+                    <div className="answer-status">Parsed count: <strong>{answerKeySummary.parsedCount}</strong></div>
+                    <div className="answer-status">Matched count: <strong>{answerKeySummary.matchedCount}</strong></div>
+                    <div className="answer-status">Applied count: <strong>{answerKeySummary.appliedCount}</strong></div>
+                    <div className="answer-status">Preserved existing answers: <strong>{answerKeySummary.preservedCount}</strong></div>
+                  </div>
+                )}
                 <div className="bulk-row">
                   <div className="field-stack">
                     <label className="field-label">Start page</label>

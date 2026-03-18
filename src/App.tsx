@@ -7,8 +7,9 @@ import './App.css';
 import { QuestionFormProvider } from './context/QuestionFormContext';
 import ReviewApp from './ReviewApp';
 import { getExpressBase } from './utils/apiBase';
+import AISimplifiedAutomation from './components/AISimplifiedAutomation';
 
-type View = 'login' | 'select' | 'upload' | 'list' | 'ai';
+type View = 'login' | 'select' | 'upload' | 'list' | 'ai' | 'aiSimplified';
 const formControlClass =
   'w-full border border-gray-300 rounded-md px-3 py-2 bg-white text-slate-900 placeholder:text-gray-500 focus:outline-none focus:ring-2 focus:ring-primary-200';
 
@@ -227,6 +228,16 @@ function App() {
                   AI Automation
                 </button>
                 <button
+                  onClick={() => setCurrentView('aiSimplified')}
+                  className={`px-3 py-1.5 sm:px-4 sm:py-2 text-sm font-medium rounded-md transition-colors ${
+                    currentView === 'aiSimplified'
+                      ? 'bg-primary-100 text-primary-700 border border-primary-200'
+                      : 'text-gray-600 hover:text-gray-900 hover:bg-gray-100'
+                  }`}
+                >
+                  AI Simplified
+                </button>
+                <button
                   onClick={handleLogout}
                   className="px-3 py-1.5 sm:px-4 sm:py-2 text-sm font-medium rounded-md text-gray-600 hover:text-gray-900 hover:bg-gray-100"
                 >
@@ -379,7 +390,7 @@ function App() {
           {currentView === 'select' && (
             <div className="max-w-5xl mx-auto px-4">
               <h2 className="text-xl font-semibold text-gray-900 mb-6">Choose a workflow</h2>
-              <div className="grid gap-6 md:grid-cols-2">
+              <div className="grid gap-6 md:grid-cols-3">
                 <div className="bg-white border border-gray-200 rounded-lg p-6 shadow-sm">
                   <h3 className="text-lg font-semibold text-gray-900 mb-2">Manual Entry</h3>
                   <p className="text-sm text-gray-600 mb-4">
@@ -404,12 +415,25 @@ function App() {
                     Open AI Automation
                   </button>
                 </div>
+                <div className="bg-white border border-gray-200 rounded-lg p-6 shadow-sm">
+                  <h3 className="text-lg font-semibold text-gray-900 mb-2">AI Simplified Automation</h3>
+                  <p className="text-sm text-gray-600 mb-4">
+                    Use the simplified automation workspace for PDF upload, answer-key review, diagram mapping, and guided apply.
+                  </p>
+                  <button
+                    onClick={() => setCurrentView('aiSimplified')}
+                    className="bg-primary-600 text-white px-4 py-2 rounded-md hover:bg-primary-700 transition-colors"
+                  >
+                    Open AI Simplified Automation
+                  </button>
+                </div>
               </div>
             </div>
           )}
           {currentView === 'upload' && <QuestionUploadForm />}
           {currentView === 'list' && <QuestionsList />}
           {currentView === 'ai' && <ReviewApp bootUser={authUser} showTitle={false} onLogout={handleLogout} />}
+          {currentView === 'aiSimplified' && <AISimplifiedAutomation />}
         </main>
       </QuestionFormProvider>
 

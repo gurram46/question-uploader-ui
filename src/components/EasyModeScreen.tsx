@@ -754,6 +754,50 @@ const EasyModeScreen: React.FC = () => {
     setUiNotice(`Commit finished. Inserted ${inserted}.`);
   }
 
+  async function commitCurrentQuestion(question: DraftQuestion) {
+    if (!selectedBatchId) return;
+    setCommitBusy(true);
+    setUiError('');
+    setCommitResult('');
+    const payload = buildBulkPayload(selectedBatchId, [question]);
+    const response = await apiFetch(`${EXPRESS_API_BASE}/api/questions/bulk`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        ...authHeaders(),
+      },
+      body: JSON.stringify({ questions: payload, chunkSize: 1 }),
+    });
+    const data = (await response.json()) as CommitResponse;
+    setCommitBusy(false);
+    if (!response.ok) {
+      setUiError(data.detail || 'Question commit failed.');
+      return;
+    }
+    const inserted = data.insertedCount ?? data.inserted ?? 0;
+    const failed = data.failedCount ?? data.failed ?? 0;
+    if (inserted > 0) {
+      setUiNotice(`Question Q${normalizeQuestionNumber(question, 1)} committed.`);
+      setCommitResult(`Committed 1 question.${failed > 0 ? ` ${failed} failed.` : ''}`);
+      setReviewIndex(prev => prev);
+      await loadDraft(selectedBatchId);
+      return;
+    }
+    setUiError(failed > 0 ? 'Question commit failed.' : 'No question was committed.');
+  }
+
+  function goToNextQuestionToFix() {
+    setReviewIndex(prev => Math.min(reviewQueue.length - 1, prev + 1));
+  }
+
+  function saveAndNextCurrentQuestion() {
+    const active = document.activeElement as HTMLElement | null;
+    active?.blur();
+    window.setTimeout(() => {
+      goToNextQuestionToFix();
+    }, 0);
+  }
+
   const questions = useMemo(() => {
     const next = [...(draft?.questions || [])];
     next.sort(compareQuestions);
@@ -869,6 +913,8 @@ const EasyModeScreen: React.FC = () => {
     };
   }, [questions, reviewQueue.length]);
 
+  const completedCount = Math.max(0, summary.total - summary.reviewNeeded);
+
   const sourceElapsed = sourceStartedAt ? Math.floor((nowTs - sourceStartedAt) / 1000) : null;
   const parseElapsed = parseStartedAt ? Math.floor((nowTs - parseStartedAt) / 1000) : null;
 
@@ -914,6 +960,27 @@ const EasyModeScreen: React.FC = () => {
             </div>
           </div>
         </header>
+
+        <section className="easy-card easy-card--progress-strip">
+          <div className="easy-progress-strip">
+            <div>
+              <span>Total questions</span>
+              <strong>{summary.total}</strong>
+            </div>
+            <div>
+              <span>Done</span>
+              <strong>{completedCount}</strong>
+            </div>
+            <div>
+              <span>Still needs work</span>
+              <strong>{summary.reviewNeeded}</strong>
+            </div>
+            <div>
+              <span>Current</span>
+              <strong>{currentQuestion ? `Q${currentQuestionNumber}` : 'All done'}</strong>
+            </div>
+          </div>
+        </section>
 
         <section className="easy-top-stack">
           <div className="easy-card">
@@ -1394,6 +1461,33 @@ const EasyModeScreen: React.FC = () => {
                   </div>
                 </div>
 
+                <div className="easy-card-actions">
+                  <button
+                    className="easy-btn primary"
+                    type="button"
+                    disabled={reviewIndex >= reviewQueue.length - 1}
+                    onClick={() => saveAndNextCurrentQuestion()}
+                  >
+                    Save and next
+                  </button>
+                  <button
+                    className="easy-btn subtle"
+                    type="button"
+                    disabled={commitBusy}
+                    onClick={() => void commitCurrentQuestion(currentQuestion)}
+                  >
+                    {commitBusy ? 'Committing...' : `Commit Q${currentQuestionNumber}`}
+                  </button>
+                  <button
+                    className="easy-btn secondary"
+                    type="button"
+                    disabled={reviewIndex >= reviewQueue.length - 1}
+                    onClick={() => goToNextQuestionToFix()}
+                  >
+                    Next question to fix
+                  </button>
+                </div>
+
                 <div className="easy-quick-details">
                   <label className="easy-detail-field">
                     <span>Type</span>
@@ -1428,12 +1522,8 @@ const EasyModeScreen: React.FC = () => {
 
                   <label className="easy-detail-field">
                     <span>Level</span>
-                    <input
-                      type="number"
-                      min="1"
-                      max="3"
+                    <select
                       value={currentLevel}
-                      placeholder="1-3"
                       onChange={e => {
                         const raw = e.target.value;
                         const parsed = Number(raw);
@@ -1441,7 +1531,12 @@ const EasyModeScreen: React.FC = () => {
                           difficulty_level: raw === '' || !Number.isFinite(parsed) ? null : parsed,
                         });
                       }}
-                    />
+                    >
+                      <option value="">Select level</option>
+                      <option value="1">1</option>
+                      <option value="2">2</option>
+                      <option value="3">3</option>
+                    </select>
                   </label>
 
                   <label className="easy-detail-field">

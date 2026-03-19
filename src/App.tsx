@@ -8,8 +8,9 @@ import { QuestionFormProvider } from './context/QuestionFormContext';
 import ReviewApp from './ReviewApp';
 import { getExpressBase } from './utils/apiBase';
 import AISimplifiedAutomation from './components/AISimplifiedAutomation';
+import EasyModeScreen from './components/EasyModeScreen';
 
-type View = 'login' | 'select' | 'upload' | 'list' | 'ai' | 'aiSimplified';
+type View = 'login' | 'select' | 'upload' | 'list' | 'ai' | 'aiSimplified' | 'easyMode';
 const formControlClass =
   'w-full border border-gray-300 rounded-md px-3 py-2 bg-white text-slate-900 placeholder:text-gray-500 focus:outline-none focus:ring-2 focus:ring-primary-200';
 
@@ -238,6 +239,16 @@ function App() {
                   AI Simplified
                 </button>
                 <button
+                  onClick={() => setCurrentView('easyMode')}
+                  className={`px-3 py-1.5 sm:px-4 sm:py-2 text-sm font-medium rounded-md transition-colors ${
+                    currentView === 'easyMode'
+                      ? 'bg-primary-100 text-primary-700 border border-primary-200'
+                      : 'text-gray-600 hover:text-gray-900 hover:bg-gray-100'
+                  }`}
+                >
+                  Easy Mode
+                </button>
+                <button
                   onClick={handleLogout}
                   className="px-3 py-1.5 sm:px-4 sm:py-2 text-sm font-medium rounded-md text-gray-600 hover:text-gray-900 hover:bg-gray-100"
                 >
@@ -390,7 +401,7 @@ function App() {
           {currentView === 'select' && (
             <div className="max-w-5xl mx-auto px-4">
               <h2 className="text-xl font-semibold text-gray-900 mb-6">Choose a workflow</h2>
-              <div className="grid gap-6 md:grid-cols-3">
+              <div className="grid gap-6 md:grid-cols-2 xl:grid-cols-4">
                 <div className="bg-white border border-gray-200 rounded-lg p-6 shadow-sm">
                   <h3 className="text-lg font-semibold text-gray-900 mb-2">Manual Entry</h3>
                   <p className="text-sm text-gray-600 mb-4">
@@ -427,6 +438,18 @@ function App() {
                     Open AI Simplified Automation
                   </button>
                 </div>
+                <div className="bg-white border border-gray-200 rounded-lg p-6 shadow-sm">
+                  <h3 className="text-lg font-semibold text-gray-900 mb-2">Easy Mode</h3>
+                  <p className="text-sm text-gray-600 mb-4">
+                    Follow the fastest guided flow for upload, answer-key review, quick fixes, metadata, and commit.
+                  </p>
+                  <button
+                    onClick={() => setCurrentView('easyMode')}
+                    className="bg-primary-600 text-white px-4 py-2 rounded-md hover:bg-primary-700 transition-colors"
+                  >
+                    Open Easy Mode
+                  </button>
+                </div>
               </div>
             </div>
           )}
@@ -434,6 +457,7 @@ function App() {
           {currentView === 'list' && <QuestionsList />}
           {currentView === 'ai' && <ReviewApp bootUser={authUser} showTitle={false} onLogout={handleLogout} />}
           {currentView === 'aiSimplified' && <AISimplifiedAutomation />}
+          {currentView === 'easyMode' && <EasyModeScreen />}
         </main>
       </QuestionFormProvider>
 

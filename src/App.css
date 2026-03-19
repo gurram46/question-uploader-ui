@@ -1216,9 +1216,9 @@
   border-radius: 24px;
   border: 1px solid rgba(148, 163, 184, 0.22);
   background: rgba(255, 255, 255, 0.88);
-  padding: 1.2rem;
+  padding: 1.35rem;
   display: grid;
-  gap: 1rem;
+  gap: 1.15rem;
 }
 
 .easy-card-head {
@@ -1318,11 +1318,55 @@
 .easy-file-pick {
   display: grid;
   gap: 0.4rem;
+  min-width: 0;
 }
 
 .easy-file-pick span {
   color: #0f172a;
   font-weight: 700;
+}
+
+.easy-file-picker-row {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 0.75rem;
+  align-items: center;
+  min-width: 0;
+}
+
+.easy-picker-btn {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 44px;
+  border-radius: 14px;
+  border: 1px solid #cbd5e1;
+  background: #fff;
+  color: #0f172a;
+  padding: 0.82rem 1rem;
+  font-weight: 700;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.easy-picker-btn input[type='file'] {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  cursor: pointer;
+}
+
+.easy-file-name {
+  min-width: 0;
+  border: 1px solid #dbe3ec;
+  border-radius: 14px;
+  background: #f8fafc;
+  color: #475569;
+  padding: 0.82rem 0.95rem;
+  font-size: 0.92rem;
+  line-height: 1.35;
+  word-break: break-word;
 }
 
 .easy-file-pick input,
@@ -1411,7 +1455,6 @@
 
 .easy-answer-review-head,
 .easy-question-head,
-.easy-question-footer,
 .easy-card-actions {
   display: flex;
   justify-content: space-between;
@@ -1471,9 +1514,9 @@
   border-radius: 20px;
   border: 1px solid #dbe3ec;
   background: #fff;
-  padding: 1rem;
+  padding: 1.2rem;
   display: grid;
-  gap: 0.85rem;
+  gap: 1rem;
 }
 
 .easy-question-head strong {
@@ -1490,6 +1533,7 @@
   display: flex;
   gap: 0.5rem;
   flex-wrap: wrap;
+  margin-top: 0.15rem;
 }
 
 .easy-question-tags span {
@@ -1504,11 +1548,12 @@
 .easy-question-text {
   min-height: 110px;
   resize: vertical;
+  line-height: 1.5;
 }
 
 .easy-option-list {
   display: grid;
-  gap: 0.7rem;
+  gap: 0.85rem;
 }
 
 .easy-asset-toolbar,
@@ -1542,25 +1587,28 @@
 }
 
 .easy-inline-gallery {
-  display: flex;
-  flex-wrap: wrap;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
   gap: 0.75rem;
+  align-items: start;
 }
 
 .easy-inline-gallery figure {
   margin: 0;
   border-radius: 16px;
   border: 1px solid #dbe3ec;
-  overflow: hidden;
+  overflow: clip;
   background: #f8fafc;
-  max-width: 180px;
+  min-width: 0;
 }
 
 .easy-inline-gallery img {
   display: block;
   width: 100%;
-  height: 120px;
-  object-fit: cover;
+  height: 200px;
+  object-fit: contain;
+  padding: 0.65rem;
+  background: #eef2f7;
 }
 
 .easy-inline-gallery figcaption {
@@ -1585,7 +1633,8 @@
 
 .easy-answer-pick {
   display: grid;
-  gap: 0.3rem;
+  gap: 0.45rem;
+  min-width: 0;
 }
 
 .easy-answer-stack {
@@ -1654,7 +1703,7 @@
 
 .easy-diagram-strip {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  grid-template-columns: 1fr;
   gap: 0.75rem;
 }
 
@@ -1667,8 +1716,8 @@
 }
 
 .easy-page-attach-actions {
-  display: flex;
-  flex-wrap: wrap;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(110px, 1fr));
   gap: 0.45rem;
   padding: 0.7rem;
 }
@@ -1687,9 +1736,10 @@
 .easy-diagram-strip img {
   display: block;
   width: 100%;
-  height: 120px;
-  object-fit: cover;
-  background: #e2e8f0;
+  height: 220px;
+  object-fit: contain;
+  padding: 0.75rem;
+  background: #eef2f7;
 }
 
 .easy-diagram-strip figcaption {
@@ -1930,7 +1980,48 @@
 
 .easy-focus-field {
   display: grid;
-  gap: 0.35rem;
+  gap: 0.5rem;
+}
+
+.easy-focus-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1.7fr) minmax(280px, 0.9fr);
+  gap: 1.25rem;
+  align-items: start;
+}
+
+.easy-focus-main {
+  display: grid;
+  gap: 1rem;
+  min-width: 0;
+}
+
+.easy-page-assets-rail {
+  position: sticky;
+  top: 96px;
+  display: grid;
+  gap: 0.9rem;
+  align-self: start;
+  border-radius: 18px;
+  border: 1px solid #dbe3ec;
+  background: #f8fafc;
+  padding: 1rem;
+}
+
+.easy-rail-head {
+  display: grid;
+  gap: 0.25rem;
+}
+
+.easy-rail-head strong {
+  color: #0f172a;
+  font-size: 1rem;
+}
+
+.easy-rail-head span {
+  color: #64748b;
+  font-size: 0.84rem;
+  line-height: 1.45;
 }
 
 .easy-focus-field span {
@@ -1942,12 +2033,13 @@
 .easy-quick-details {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 0.8rem;
+  gap: 1rem;
+  align-items: end;
 }
 
 .easy-detail-field {
   display: grid;
-  gap: 0.35rem;
+  gap: 0.45rem;
 }
 
 .easy-detail-field span {
@@ -1964,6 +2056,29 @@
   background: #fff;
   color: #0f172a;
   padding: 0.82rem 0.95rem;
+}
+
+.easy-question-footer {
+  display: grid;
+  grid-template-columns: minmax(220px, 320px) minmax(0, 1fr);
+  gap: 1.2rem;
+  align-items: end;
+}
+
+.easy-saving-indicator {
+  justify-self: end;
+  align-self: center;
+  text-align: right;
+}
+
+.easy-option-image-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+  gap: 0.85rem;
+}
+
+.easy-asset-toolbar {
+  align-items: center;
 }
 
 .easy-ready-card {
@@ -2041,8 +2156,15 @@
   .easy-status-grid--sticky,
   .easy-batch-list--compact,
   .easy-parse-grid--compact,
-  .easy-quick-details {
+  .easy-quick-details,
+  .easy-inline-gallery,
+  .easy-option-image-grid {
     grid-template-columns: 1fr;
+  }
+
+  .easy-file-picker-row {
+    grid-template-columns: 1fr;
+    align-items: stretch;
   }
 
   .easy-mode-page {
@@ -2119,8 +2241,26 @@
     font-size: 16px;
   }
 
+  .easy-focus-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .easy-page-assets-rail {
+    position: static;
+  }
+
   .easy-diagram-strip {
     grid-template-columns: 1fr;
+  }
+
+  .easy-question-footer {
+    grid-template-columns: 1fr;
+    align-items: stretch;
+  }
+
+  .easy-saving-indicator {
+    justify-self: start;
+    text-align: left;
   }
 
   .easy-banner {

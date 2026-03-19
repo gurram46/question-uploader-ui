@@ -214,6 +214,18 @@ function patchOptionsWithAnswers(options: DraftOption[], answers: AnswerLetter[]
   });
 }
 
+function ensureEditorOptions(options: DraftOption[]): DraftOption[] {
+  const byLetter = new Map<string, DraftOption>();
+  options.forEach(option => {
+    const letter = normalizeOptionLetter(option.letter);
+    byLetter.set(letter, { ...option, letter });
+  });
+  return ANSWER_CHOICES.map(letter => {
+    const existing = byLetter.get(letter);
+    return existing || { letter, text: '', is_correct: false };
+  });
+}
+
 function firstImage(listOrSingle?: string[] | string): string {
   if (Array.isArray(listOrSingle)) return listOrSingle.find(Boolean) || '';
   return listOrSingle || '';
@@ -825,11 +837,10 @@ const EasyModeScreen: React.FC = () => {
   const currentQuestionNumber = currentQuestion
     ? normalizeQuestionNumber(currentQuestion, currentReviewItem ? currentReviewItem.index + 1 : 1)
     : 0;
-  const currentOptions = currentQuestion && Array.isArray(currentQuestion.options) ? currentQuestion.options : [];
+  const currentOptions = currentQuestion && Array.isArray(currentQuestion.options) ? ensureEditorOptions(currentQuestion.options) : ensureEditorOptions([]);
   const currentAnswer = currentQuestion ? serializeCorrectAnswer(currentQuestion) : '';
   const currentAnswers = currentQuestion ? serializeCorrectAnswers(currentQuestion) : [];
   const currentQuestionType = currentQuestion?.questionType || currentQuestion?.question_type || 'single_correct';
-  const isNumericalQuestion = currentQuestionType === 'numerical';
   const currentDifficultyType = currentQuestion?.difficulty_type || '';
   const currentLevel =
     currentQuestion?.difficulty_level !== null && currentQuestion?.difficulty_level !== undefined
@@ -841,7 +852,6 @@ const EasyModeScreen: React.FC = () => {
   const currentPageAssets = currentQuestion
     ? assetEntries.filter(asset => asset.source_page === currentQuestion.source_page)
     : [];
-  const currentNumericalValue = currentOptions[0]?.text || '';
   const currentContextSubject = String(currentQuestion?.subject_name || metadataDraft.subject || '').trim() || 'No subject';
   const currentContextChapter = String(currentQuestion?.chapter_name || metadataDraft.chapter || '').trim() || 'No chapter';
   const currentContextTopic = String(currentQuestion?.topic_name || metadataDraft.topic || '').trim() || 'No topic';
@@ -920,12 +930,20 @@ const EasyModeScreen: React.FC = () => {
               <div className="easy-batch-create">
                 <label className="easy-file-pick">
                   <span>Source PDF or DOCX</span>
-                  <input type="file" accept=".pdf,.doc,.docx" onChange={e => setSourceFile(e.target.files?.[0] || null)} />
+                  <div className="easy-file-picker-row">
+                    <label className="easy-picker-btn">
+                      <span>Choose file</span>
+                      <input type="file" accept=".pdf,.doc,.docx" onChange={e => setSourceFile(e.target.files?.[0] || null)} />
+                    </label>
+                    <div className="easy-file-name" title={sourceFile?.name || 'No file selected'}>
+                      {sourceFile ? sourceFile.name : 'No file selected'}
+                    </div>
+                  </div>
                 </label>
                 <button className="easy-btn primary" type="button" disabled={uploadingSource} onClick={() => void uploadSourceBatch()}>
                   {uploadingSource ? 'Uploading...' : 'Upload and Start'}
                 </button>
-                <p className="easy-muted">{sourceFile ? sourceFile.name : 'No file selected yet.'}</p>
+                <p className="easy-muted">{sourceFile ? 'Ready to upload this file.' : 'No file selected yet.'}</p>
               </div>
               <div className="easy-batch-list easy-batch-list--compact">
                 {batches.slice(0, 6).map(batch => (
@@ -1057,7 +1075,15 @@ const EasyModeScreen: React.FC = () => {
               <div className="easy-key-top easy-key-top--compact">
                 <label className="easy-file-pick wide">
                   <span>Answer key file</span>
-                  <input type="file" accept=".pdf,.png,.jpg,.jpeg,.doc,.docx" onChange={e => setAnswerKeyFile(e.target.files?.[0] || null)} />
+                  <div className="easy-file-picker-row">
+                    <label className="easy-picker-btn">
+                      <span>Choose file</span>
+                      <input type="file" accept=".pdf,.png,.jpg,.jpeg,.doc,.docx" onChange={e => setAnswerKeyFile(e.target.files?.[0] || null)} />
+                    </label>
+                    <div className="easy-file-name" title={answerKeyFile?.name || 'No file selected'}>
+                      {answerKeyFile ? answerKeyFile.name : 'No file selected'}
+                    </div>
+                  </div>
                 </label>
                 <button className="easy-btn primary" type="button" onClick={() => void parseAnswerKey()}>
                   Parse
@@ -1209,6 +1235,9 @@ const EasyModeScreen: React.FC = () => {
                   <span>Q{currentQuestionNumber}</span>
                 </div>
 
+                <div className="easy-focus-layout">
+                  <div className="easy-focus-main">
+
                 <label className="easy-focus-field">
                   <span>Question text</span>
                   <textarea
@@ -1260,52 +1289,28 @@ const EasyModeScreen: React.FC = () => {
                   ) : null}
                 </div>
 
-                {isNumericalQuestion ? (
-                  <label className="easy-focus-field">
-                    <span>Numerical answer</span>
-                    <input
-                      type="text"
-                      defaultValue={currentNumericalValue}
-                      placeholder="Enter numerical answer"
-                      onBlur={e => {
-                        const nextValue = e.target.value;
-                        const nextOptions = [
-                          { ...(currentOptions[0] || { letter: 'A', text: '', is_correct: true }), letter: 'A', text: nextValue, is_correct: true },
-                        ];
-                        void patchQuestion(currentQuestion.question_id, {
-                          correct_option_letters: 'A',
-                          options: nextOptions,
-                        });
-                      }}
-                    />
-                  </label>
-                ) : (
-                  <div className="easy-option-list">
-                    {currentOptions.map(option => (
-                      <label className="easy-option-row" key={`${currentQuestion.question_id}-${option.letter}`}>
-                        <span>{normalizeOptionLetter(option.letter)}</span>
-                        <input
-                          type="text"
-                          defaultValue={option.text}
-                          placeholder={`Option ${normalizeOptionLetter(option.letter)}`}
-                          onBlur={e => {
-                            const nextOptions = currentOptions.map(item =>
-                              item.letter === option.letter ? { ...item, text: e.target.value } : item
-                            );
-                            void patchQuestion(currentQuestion.question_id, { options: nextOptions });
-                          }}
-                        />
-                      </label>
-                    ))}
-                  </div>
-                )}
+                <div className="easy-option-list">
+                  {currentOptions.map(option => (
+                    <label className="easy-option-row" key={`${currentQuestion.question_id}-${option.letter}`}>
+                      <span>{normalizeOptionLetter(option.letter)}</span>
+                      <input
+                        type="text"
+                        defaultValue={option.text}
+                        placeholder={`Option ${normalizeOptionLetter(option.letter)}`}
+                        onBlur={e => {
+                          const nextOptions = currentOptions.map(item =>
+                            item.letter === option.letter ? { ...item, text: e.target.value } : item
+                          );
+                          void patchQuestion(currentQuestion.question_id, { options: nextOptions });
+                        }}
+                      />
+                    </label>
+                  ))}
+                </div>
 
                 <div className="easy-question-footer">
                   <label className="easy-answer-pick">
                     <span>Correct answer</span>
-                    {isNumericalQuestion ? (
-                      <div className="easy-answer-static">Numerical question uses the value above as the answer.</div>
-                    ) : (
                     <div className="easy-answer-stack">
                       <select
                         value={currentAnswers[0] || currentAnswer}
@@ -1329,59 +1334,60 @@ const EasyModeScreen: React.FC = () => {
                           </option>
                         ))}
                       </select>
-                      {currentQuestionType === 'multiple_correct' ? (
-                        <>
-                          <label className="easy-inline-check">
-                            <input
-                              type="checkbox"
-                              checked={currentAnswers.length > 1}
-                              onChange={e => {
-                                if (!e.target.checked) {
-                                  const nextAnswers = currentAnswers.slice(0, 1);
-                                  void patchQuestion(currentQuestion.question_id, {
-                                    correct_option_letters: nextAnswers.join(','),
-                                    options: patchOptionsWithAnswers(currentOptions, nextAnswers as AnswerLetter[]),
-                                  });
-                                  return;
-                                }
-                                const seed = (currentAnswers[0] || currentAnswer || 'A') as AnswerLetter;
-                                const second = currentAnswers[1] && currentAnswers[1] !== seed
-                                  ? currentAnswers[1]
-                                  : (ANSWER_CHOICES.find(choice => choice !== seed) || 'B');
-                                const nextAnswers = [seed, second] as AnswerLetter[];
-                                void patchQuestion(currentQuestion.question_id, {
-                                  correct_option_letters: nextAnswers.join(','),
-                                  options: patchOptionsWithAnswers(currentOptions, nextAnswers),
-                                });
-                              }}
-                            />
-                            <span>Multiple correct</span>
-                          </label>
-                          {currentAnswers.length > 1 ? (
-                            <select
-                              value={currentAnswers[1] || ''}
-                              onChange={e => {
-                                const first = (currentAnswers[0] || currentAnswer || '') as AnswerLetter;
-                                const second = e.target.value.toUpperCase() as AnswerLetter;
-                                const nextAnswers = Array.from(new Set([first, second].filter(Boolean))) as AnswerLetter[];
-                                void patchQuestion(currentQuestion.question_id, {
-                                  correct_option_letters: nextAnswers.join(','),
-                                  options: patchOptionsWithAnswers(currentOptions, nextAnswers),
-                                });
-                              }}
-                            >
-                              <option value="">Select second answer</option>
-                              {ANSWER_CHOICES.map(choice => (
-                                <option value={choice} key={`${currentQuestion.question_id}-${choice}-secondary`}>
-                                  {choice}
-                                </option>
-                              ))}
-                            </select>
-                          ) : null}
-                        </>
+                      <label className="easy-inline-check">
+                        <input
+                          type="checkbox"
+                          checked={currentQuestionType === 'multiple_correct' || currentAnswers.length > 1}
+                          onChange={e => {
+                            if (!e.target.checked) {
+                              const nextAnswers = currentAnswers.slice(0, 1);
+                              void patchQuestion(currentQuestion.question_id, {
+                                questionType: currentQuestionType === 'multiple_correct' ? 'single_correct' : currentQuestionType,
+                                question_type: currentQuestionType === 'multiple_correct' ? 'single_correct' : currentQuestionType,
+                                correct_option_letters: nextAnswers.join(','),
+                                options: patchOptionsWithAnswers(currentOptions, nextAnswers as AnswerLetter[]),
+                              });
+                              return;
+                            }
+                            const seed = (currentAnswers[0] || currentAnswer || 'A') as AnswerLetter;
+                            const second = currentAnswers[1] && currentAnswers[1] !== seed
+                              ? currentAnswers[1]
+                              : (ANSWER_CHOICES.find(choice => choice !== seed) || 'B');
+                            const nextAnswers = [seed, second] as AnswerLetter[];
+                            void patchQuestion(currentQuestion.question_id, {
+                              questionType: 'multiple_correct',
+                              question_type: 'multiple_correct',
+                              correct_option_letters: nextAnswers.join(','),
+                              options: patchOptionsWithAnswers(currentOptions, nextAnswers),
+                            });
+                          }}
+                        />
+                        <span>Multiple correct</span>
+                      </label>
+                      {currentQuestionType === 'multiple_correct' || currentAnswers.length > 1 ? (
+                        <select
+                          value={currentAnswers[1] || ''}
+                          onChange={e => {
+                            const first = (currentAnswers[0] || currentAnswer || '') as AnswerLetter;
+                            const second = e.target.value.toUpperCase() as AnswerLetter;
+                            const nextAnswers = Array.from(new Set([first, second].filter(Boolean))) as AnswerLetter[];
+                            void patchQuestion(currentQuestion.question_id, {
+                              questionType: 'multiple_correct',
+                              question_type: 'multiple_correct',
+                              correct_option_letters: nextAnswers.join(','),
+                              options: patchOptionsWithAnswers(currentOptions, nextAnswers),
+                            });
+                          }}
+                        >
+                          <option value="">Select second answer</option>
+                          {ANSWER_CHOICES.map(choice => (
+                            <option value={choice} key={`${currentQuestion.question_id}-${choice}-secondary`}>
+                              {choice}
+                            </option>
+                          ))}
+                        </select>
                       ) : null}
                     </div>
-                    )}
                   </label>
                   <div className="easy-saving-indicator">
                     {savingQuestionId === currentQuestion.question_id ? 'Saving...' : 'Changes auto-save'}
@@ -1399,13 +1405,6 @@ const EasyModeScreen: React.FC = () => {
                           questionType: nextType,
                           question_type: nextType,
                         };
-                        if (nextType === 'numerical') {
-                          const firstValue = currentOptions[0]?.text || '';
-                          patch.correct_option_letters = 'A';
-                          patch.options = [
-                            { ...(currentOptions[0] || { letter: 'A', text: '', is_correct: true }), letter: 'A', text: firstValue, is_correct: true },
-                          ];
-                        }
                         if (nextType === 'single_correct') {
                           const primary = currentAnswers[0] || currentAnswer || '';
                           if (primary) {
@@ -1465,49 +1464,45 @@ const EasyModeScreen: React.FC = () => {
                   </label>
                 </div>
 
-                {!isNumericalQuestion ? (
-                  <div className="easy-option-image-grid">
-                    {currentOptions.map(option => (
-                      <label key={`${currentQuestion.question_id}-${option.letter}-image`} className="easy-asset-btn">
-                        <span>Upload image for {normalizeOptionLetter(option.letter)}</span>
-                        <input
-                          type="file"
-                          accept="image/*"
-                          onChange={async e => {
-                            const file = e.target.files?.[0];
-                            if (!file || !currentQuestion) return;
-                            const uploaded = await uploadAsset(file);
-                            if (!uploaded) return;
-                            const nextOptions = currentOptions.map(item =>
-                              item.letter === option.letter
-                                ? {
-                                    ...item,
-                                    image_url: uploaded,
-                                    image_urls: Array.from(new Set([...(item.image_urls || []), uploaded])),
-                                  }
-                                : item
-                            );
-                            await patchQuestion(currentQuestion.question_id, { options: nextOptions });
-                            e.currentTarget.value = '';
-                          }}
-                        />
-                      </label>
-                    ))}
-                  </div>
-                ) : null}
+                <div className="easy-option-image-grid">
+                  {currentOptions.map(option => (
+                    <label key={`${currentQuestion.question_id}-${option.letter}-image`} className="easy-asset-btn">
+                      <span>Upload image for {normalizeOptionLetter(option.letter)}</span>
+                      <input
+                        type="file"
+                        accept="image/*"
+                        onChange={async e => {
+                          const file = e.target.files?.[0];
+                          if (!file || !currentQuestion) return;
+                          const uploaded = await uploadAsset(file);
+                          if (!uploaded) return;
+                          const nextOptions = currentOptions.map(item =>
+                            item.letter === option.letter
+                              ? {
+                                  ...item,
+                                  image_url: uploaded,
+                                  image_urls: Array.from(new Set([...(item.image_urls || []), uploaded])),
+                                }
+                              : item
+                          );
+                          await patchQuestion(currentQuestion.question_id, { options: nextOptions });
+                          e.currentTarget.value = '';
+                        }}
+                      />
+                    </label>
+                  ))}
+                </div>
 
-                {!isNumericalQuestion ? (
-                  <div className="easy-inline-gallery">
-                    {currentOptions.flatMap(option =>
-                      toImageList(option.image_urls || option.image_url).map(image => (
-                        <figure key={`${currentQuestion.question_id}-${option.letter}-${image}`}>
-                          <img src={assetUrl(image)} alt={`option ${normalizeOptionLetter(option.letter)}`} />
-                          <figcaption>Option {normalizeOptionLetter(option.letter)}</figcaption>
-                        </figure>
-                      ))
-                    )}
-                  </div>
-                ) : null}
+                <div className="easy-inline-gallery">
+                  {currentOptions.flatMap(option =>
+                    toImageList(option.image_urls || option.image_url).map(image => (
+                      <figure key={`${currentQuestion.question_id}-${option.letter}-${image}`}>
+                        <img src={assetUrl(image)} alt={`option ${normalizeOptionLetter(option.letter)}`} />
+                        <figcaption>Option {normalizeOptionLetter(option.letter)}</figcaption>
+                      </figure>
+                    ))
+                  )}
+                </div>
 
                 <label className="easy-focus-field">
                   <span>Explanation</span>
@@ -1558,8 +1553,14 @@ const EasyModeScreen: React.FC = () => {
                     ))}
                   </div>
                 ) : null}
+                  </div>
 
                 {currentPageAssets.length > 0 ? (
+                  <aside className="easy-page-assets-rail">
+                    <div className="easy-rail-head">
+                      <strong>Images from this page</strong>
+                      <span>Reference images for this question's source page.</span>
+                    </div>
                   <div className="easy-diagram-strip">
                     {currentPageAssets.map(asset => (
                       <figure key={`${currentQuestion.question_id}-${asset.key}`}>
@@ -1584,31 +1585,33 @@ const EasyModeScreen: React.FC = () => {
                           >
                             Use for explanation
                           </button>
-                          {!isNumericalQuestion ? currentOptions.map(option => (
-                            <button
-                              key={`${asset.filename}-${option.letter}`}
-                              type="button"
-                              onClick={() => {
-                                const nextOptions = currentOptions.map(item =>
-                                  item.letter === option.letter
-                                    ? {
-                                        ...item,
-                                        image_url: asset.filename,
-                                        image_urls: Array.from(new Set([...(item.image_urls || []), asset.filename])),
-                                      }
-                                    : item
-                                );
-                                void patchQuestion(currentQuestion.question_id, { options: nextOptions });
-                              }}
-                            >
-                              Use for {normalizeOptionLetter(option.letter)}
-                            </button>
-                          )) : null}
+                              {currentOptions.map(option => (
+                                <button
+                                  key={`${asset.filename}-${option.letter}`}
+                                  type="button"
+                                  onClick={() => {
+                                    const nextOptions = currentOptions.map(item =>
+                                      item.letter === option.letter
+                                        ? {
+                                            ...item,
+                                            image_url: asset.filename,
+                                            image_urls: Array.from(new Set([...(item.image_urls || []), asset.filename])),
+                                          }
+                                        : item
+                                    );
+                                    void patchQuestion(currentQuestion.question_id, { options: nextOptions });
+                                  }}
+                                >
+                                  Use for {normalizeOptionLetter(option.letter)}
+                                </button>
+                              ))}
                         </div>
                       </figure>
                     ))}
                   </div>
+                  </aside>
                 ) : null}
+                </div>
               </div>
             ) : (
               <div className="easy-ready-card">

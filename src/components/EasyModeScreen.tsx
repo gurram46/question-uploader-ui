@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { questionApi } from '../services/api';
 import { getExpressBase, getPythonBase } from '../utils/apiBase';
 
 type AnswerLetter = 'A' | 'B' | 'C' | 'D';
@@ -27,6 +28,10 @@ type DraftQuestion = {
   published_year?: number | string | null;
   question_fact?: string;
   verification_state?: string;
+  difficulty_type?: string;
+  difficulty_level?: number | null;
+  questionType?: string;
+  question_type?: string;
   image_url?: string;
   image_urls?: string[];
 };
@@ -70,7 +75,6 @@ type JobStatus = {
   pages_done?: number;
   total_pages?: number;
   total_questions?: number;
-  error?: string | null;
 };
 
 type ParsedPair = {
@@ -83,14 +87,43 @@ type CommitResponse = {
   inserted?: number;
   failedCount?: number;
   failed?: number;
-  errors?: Array<{ index?: number; question_id?: string; message?: string; reason?: string }>;
+  detail?: string;
 };
 
 const PYTHON_API_BASE = getPythonBase().replace(/\/$/, '');
 const EXPRESS_API_BASE = getExpressBase().replace(/\/$/, '');
 const EASY_ACTIVE_BATCH_KEY = 'dq_easy_mode_active_batch';
 const EASY_META_KEY = 'dq_easy_mode_meta';
+const REVIEW_INDEX_KEY = 'dq_easy_mode_review_index';
 const ANSWER_CHOICES: AnswerLetter[] = ['A', 'B', 'C', 'D'];
+const DIFFICULTY_TYPES = [
+  'facts',
+  'definitions',
+  'simple mcqs',
+  'direct mcqs',
+  'statements',
+  'matching',
+  'diagramatic',
+  'assertion and reason',
+  'critical thinking',
+  'numericals',
+  'unknown',
+];
+
+type CatalogRow = {
+  subject_name?: string;
+  subjectName?: string;
+  subject?: string;
+  chapter_name?: string;
+  chapterName?: string;
+  chapter?: string;
+  topic_name?: string;
+  topicName?: string;
+  topic?: string;
+  exam_type?: string;
+  examType?: string;
+  exam_type_name?: string;
+};
 
 function authHeaders(): Record<string, string> {
   const token = localStorage.getItem('token') || '';
@@ -130,6 +163,13 @@ function serializeCorrectAnswer(question: DraftQuestion): string {
   if (ANSWER_CHOICES.includes(direct as AnswerLetter)) {
     return direct;
   }
+  if (direct.includes(',')) {
+    const first = direct
+      .split(',')
+      .map(item => item.trim().toUpperCase())
+      .find(item => ANSWER_CHOICES.includes(item as AnswerLetter));
+    if (first) return first;
+  }
   const options = Array.isArray(question.options) ? question.options : [];
   const selected = options.find(option => option.is_correct);
   return selected ? normalizeOptionLetter(selected.letter) : '';
@@ -139,23 +179,44 @@ function patchOptionsWithAnswer(options: DraftOption[], answer: string): DraftOp
   const wanted = String(answer || '').trim().toUpperCase();
   return options.map(option => {
     const normalized = normalizeOptionLetter(option.letter);
-    const numeric = option.letter;
+    const numeric = String(option.letter || '').trim();
     const matches = normalized === wanted || numeric === wanted;
     return { ...option, is_correct: matches };
   });
 }
 
-function firstImage(listOrSingle?: string[] | string): string {
-  if (Array.isArray(listOrSingle)) {
-    return listOrSingle.find(Boolean) || '';
+function serializeCorrectAnswers(question: DraftQuestion): AnswerLetter[] {
+  const direct = String(question.correct_option_letters || '')
+    .split(',')
+    .map(item => item.trim().toUpperCase())
+    .filter(item => ANSWER_CHOICES.includes(item as AnswerLetter)) as AnswerLetter[];
+  if (direct.length > 0) {
+    return Array.from(new Set(direct));
   }
+  const options = Array.isArray(question.options) ? question.options : [];
+  return options
+    .filter(option => option.is_correct)
+    .map(option => normalizeOptionLetter(option.letter))
+    .filter(letter => ANSWER_CHOICES.includes(letter as AnswerLetter)) as AnswerLetter[];
+}
+
+function patchOptionsWithAnswers(options: DraftOption[], answers: AnswerLetter[]): DraftOption[] {
+  const wanted = new Set(answers.map(answer => String(answer || '').trim().toUpperCase()));
+  return options.map(option => {
+    const normalized = normalizeOptionLetter(option.letter);
+    const numeric = String(option.letter || '').trim();
+    const matches = wanted.has(normalized) || wanted.has(numeric);
+    return { ...option, is_correct: matches };
+  });
+}
+
+function firstImage(listOrSingle?: string[] | string): string {
+  if (Array.isArray(listOrSingle)) return listOrSingle.find(Boolean) || '';
   return listOrSingle || '';
 }
 
 function toImageList(listOrSingle?: string[] | string): string[] {
-  if (Array.isArray(listOrSingle)) {
-    return listOrSingle.filter(Boolean);
-  }
+  if (Array.isArray(listOrSingle)) return listOrSingle.filter(Boolean);
   return listOrSingle ? [listOrSingle] : [];
 }
 
@@ -176,27 +237,35 @@ function formatDuration(seconds: number): string {
   return `${hours}h ${minutes % 60}m`;
 }
 
-function estimateQuestionIssue(question: DraftQuestion): { review: boolean; reasons: string[] } {
+function readCatalogSubject(row: CatalogRow): string {
+  return (row.subject_name || row.subjectName || row.subject || '').trim();
+}
+
+function toUniqueSorted(values: string[]): string[] {
+  return Array.from(new Set(values.filter(Boolean))).sort((a, b) => a.localeCompare(b));
+}
+
+function includeCurrentOption(options: string[], current: string): string[] {
+  const trimmed = current.trim();
+  if (!trimmed || options.includes(trimmed)) return options;
+  return [trimmed, ...options];
+}
+
+function getReviewReasons(question: DraftQuestion): string[] {
   const reasons: string[] = [];
   const text = normalizeQuestionText(question);
   const options = Array.isArray(question.options) ? question.options : [];
   const nonEmptyOptions = options.filter(option => String(option.text || '').trim()).length;
   const answer = serializeCorrectAnswer(question);
 
-  if (!text || text.length < 12) {
-    reasons.push('Question text needs attention');
-  }
-  if (!answer) {
-    reasons.push('Answer missing');
-  }
-  if (nonEmptyOptions < 2) {
-    reasons.push('Options incomplete');
-  }
-
-  return { review: reasons.length > 0, reasons };
+  if (!question.subject_name || !question.chapter_name || !question.topic_name) reasons.push('Metadata missing');
+  if (!text || text.length < 12) reasons.push('Question text needs attention');
+  if (!answer) reasons.push('Answer missing');
+  if (nonEmptyOptions < 2) reasons.push('Options incomplete');
+  return reasons;
 }
 
-function buildBulkPayload(batchId: string, questions: DraftQuestion[], batchTag = '') {
+function buildBulkPayload(batchId: string, questions: DraftQuestion[]) {
   return questions.map(question => ({
     verification_state: question.verification_state || 'edited',
     batchId,
@@ -206,15 +275,18 @@ function buildBulkPayload(batchId: string, questions: DraftQuestion[], batchTag 
     examType: (question.exam_type || '').trim().toLowerCase(),
     publishedYear: question.published_year ?? null,
     questionFact: (question.question_fact || '').trim(),
-    batchTag: batchTag.trim(),
-    difficultyLevel: null,
-    difficultyType: null,
-    questionType: 'single_correct',
+    batchTag: '',
+    difficultyLevel: question.difficulty_level ?? null,
+    difficultyType:
+      (question.difficulty_type || '').trim().toLowerCase() === 'unknown'
+        ? null
+        : (question.difficulty_type || '').trim().toLowerCase() || null,
+    questionType: ((question.questionType || question.question_type || 'single_correct') as string)
+      .trim()
+      .toLowerCase(),
     questionText: normalizeQuestionText(question),
     questionImageKey: normalizeAssetKey(firstImage(question.image_urls || question.image_url)),
-    questionImageKeys: toImageList(question.image_urls || question.image_url)
-      .map(item => normalizeAssetKey(item))
-      .filter(Boolean),
+    questionImageKeys: toImageList(question.image_urls || question.image_url).map(item => normalizeAssetKey(item)).filter(Boolean),
     explanationText: null,
     explanationImageKey: '',
     explanationImageKeys: [],
@@ -225,37 +297,52 @@ function buildBulkPayload(batchId: string, questions: DraftQuestion[], batchTag 
         text: String(option.text || ''),
         isCorrect: Boolean(option.is_correct),
         imageKey: normalizeAssetKey(firstImage(option.image_urls || option.image_url)),
-        imageKeys: toImageList(option.image_urls || option.image_url)
-          .map(item => normalizeAssetKey(item))
-          .filter(Boolean),
+        imageKeys: toImageList(option.image_urls || option.image_url).map(item => normalizeAssetKey(item)).filter(Boolean),
       })),
   }));
 }
 
+function compareQuestions(a: DraftQuestion, b: DraftQuestion): number {
+  const pageA = Number(a.source_page || 0);
+  const pageB = Number(b.source_page || 0);
+  if (pageA !== pageB) {
+    return pageA - pageB;
+  }
+  const qA = normalizeQuestionNumber(a, Number.MAX_SAFE_INTEGER);
+  const qB = normalizeQuestionNumber(b, Number.MAX_SAFE_INTEGER);
+  if (qA !== qB) {
+    return qA - qB;
+  }
+  return String(a.question_id || '').localeCompare(String(b.question_id || ''));
+}
+
 const EasyModeScreen: React.FC = () => {
   const [batches, setBatches] = useState<BatchSummary[]>([]);
+  const [catalogRows, setCatalogRows] = useState<CatalogRow[]>([]);
   const [selectedBatchId, setSelectedBatchId] = useState(localStorage.getItem(EASY_ACTIVE_BATCH_KEY) || '');
-  const [selectedBatch, setSelectedBatch] = useState<BatchSummary | null>(null);
   const [draft, setDraft] = useState<DraftResponse | null>(null);
+  const [jobStatus, setJobStatus] = useState<JobStatus | null>(null);
   const [sourceFile, setSourceFile] = useState<File | null>(null);
   const [answerKeyFile, setAnswerKeyFile] = useState<File | null>(null);
-  const [nowTs, setNowTs] = useState(Date.now());
-  const [uploadingSource, setUploadingSource] = useState(false);
-  const [jobStatus, setJobStatus] = useState<JobStatus | null>(null);
-  const [sourceStartedAt, setSourceStartedAt] = useState<number | null>(null);
-  const [parseStartedAt, setParseStartedAt] = useState<number | null>(null);
-  const [parseSeconds, setParseSeconds] = useState<number | null>(null);
   const [reviewedPairs, setReviewedPairs] = useState<ParsedPair[]>([]);
   const [reviewConfirmed, setReviewConfirmed] = useState(false);
   const [answerKeyStatus, setAnswerKeyStatus] = useState('Upload an answer key if you have one.');
-  const [savingQuestionId, setSavingQuestionId] = useState('');
-  const [metadataSaving, setMetadataSaving] = useState(false);
-  const [commitBusy, setCommitBusy] = useState(false);
-  const [validateBusy, setValidateBusy] = useState(false);
-  const [commitResult, setCommitResult] = useState('');
   const [uiError, setUiError] = useState('');
   const [uiNotice, setUiNotice] = useState('');
-  const [questionFilter, setQuestionFilter] = useState<'review' | 'all'>('review');
+  const [commitResult, setCommitResult] = useState('');
+  const [uploadingSource, setUploadingSource] = useState(false);
+  const [metadataSaving, setMetadataSaving] = useState(false);
+  const [validateBusy, setValidateBusy] = useState(false);
+  const [commitBusy, setCommitBusy] = useState(false);
+  const [savingQuestionId, setSavingQuestionId] = useState('');
+  const [reviewIndex, setReviewIndex] = useState(Number(localStorage.getItem(REVIEW_INDEX_KEY) || '0'));
+  const [showAllQuestions, setShowAllQuestions] = useState(false);
+  const [showMetadataPanel, setShowMetadataPanel] = useState(true);
+  const [showAnswerKeyPanel, setShowAnswerKeyPanel] = useState(true);
+  const [nowTs, setNowTs] = useState(Date.now());
+  const [sourceStartedAt, setSourceStartedAt] = useState<number | null>(null);
+  const [parseStartedAt, setParseStartedAt] = useState<number | null>(null);
+  const [parseSeconds, setParseSeconds] = useState<number | null>(null);
   const pollTimerRef = useRef<number | null>(null);
   const [metadataDraft, setMetadataDraft] = useState({
     subject: '',
@@ -279,7 +366,7 @@ const EasyModeScreen: React.FC = () => {
         }));
       }
     } catch {
-      // ignore bad local storage
+      // ignore local storage issues
     }
   }, []);
 
@@ -293,13 +380,16 @@ const EasyModeScreen: React.FC = () => {
   }, [metadataDraft]);
 
   useEffect(() => {
+    localStorage.setItem(REVIEW_INDEX_KEY, String(reviewIndex));
+  }, [reviewIndex]);
+
+  useEffect(() => {
     void loadBatches();
   }, []);
 
   useEffect(() => {
-    const match = batches.find(batch => batch.batch_id === selectedBatchId) || null;
-    setSelectedBatch(match);
-  }, [batches, selectedBatchId]);
+    void loadCatalogRows();
+  }, []);
 
   useEffect(() => {
     if (!selectedBatchId) {
@@ -308,6 +398,7 @@ const EasyModeScreen: React.FC = () => {
       return;
     }
     localStorage.setItem(EASY_ACTIVE_BATCH_KEY, selectedBatchId);
+    setReviewIndex(0);
     void loadDraft(selectedBatchId);
   }, [selectedBatchId]);
 
@@ -333,9 +424,7 @@ const EasyModeScreen: React.FC = () => {
 
   async function loadBatches() {
     const response = await apiFetch(`${PYTHON_API_BASE}/draft/drafts`, { headers: authHeaders() });
-    if (!response.ok) {
-      return;
-    }
+    if (!response.ok) return;
     const data = (await response.json()) as BatchSummary[];
     const next = Array.isArray(data) ? data : [];
     setBatches(next);
@@ -344,22 +433,27 @@ const EasyModeScreen: React.FC = () => {
     }
   }
 
+  async function loadCatalogRows() {
+    try {
+      const rows = await questionApi.getQuestions();
+      setCatalogRows(rows as unknown as CatalogRow[]);
+    } catch {
+      // Easy Mode still works without dropdown suggestions.
+    }
+  }
+
   async function loadDraft(batchId: string) {
     const response = await apiFetch(`${PYTHON_API_BASE}/draft/${batchId}?page=1&limit=200`, {
       headers: authHeaders(),
     });
-    if (!response.ok) {
-      return;
-    }
+    if (!response.ok) return;
     const data = (await response.json()) as DraftResponse;
     setDraft(data);
   }
 
   async function pollJob(jobId: string, batchId: string) {
     const response = await apiFetch(`${PYTHON_API_BASE}/draft/jobs/${jobId}`, { headers: authHeaders() });
-    if (!response.ok) {
-      return;
-    }
+    if (!response.ok) return;
     const data = (await response.json()) as JobStatus;
     setJobStatus(data);
     setBatches(prev =>
@@ -395,26 +489,18 @@ const EasyModeScreen: React.FC = () => {
     const form = new FormData();
     form.append('file', sourceFile);
     const username = localStorage.getItem('username') || '';
-    if (username) {
-      form.append('uploaded_by', username);
-    }
-    if (metadataDraft.subject.trim()) {
-      form.append('upload_subject', metadataDraft.subject.trim());
-    }
-    if (metadataDraft.chapter.trim()) {
-      form.append('upload_chapter', metadataDraft.chapter.trim());
-    }
-    if (metadataDraft.topic.trim()) {
-      form.append('upload_topic', metadataDraft.topic.trim());
-    }
+    if (username) form.append('uploaded_by', username);
+    if (metadataDraft.subject.trim()) form.append('upload_subject', metadataDraft.subject.trim());
+    if (metadataDraft.chapter.trim()) form.append('upload_chapter', metadataDraft.chapter.trim());
+    if (metadataDraft.topic.trim()) form.append('upload_topic', metadataDraft.topic.trim());
     const response = await apiFetch(`${PYTHON_API_BASE}/draft/upload`, {
       method: 'POST',
       headers: authHeaders(),
       body: form,
     });
-    const data = (await response.json()) as { batch_id?: string; job_id?: string; detail?: string; status?: string };
+    const data = (await response.json()) as { batch_id?: string; job_id?: string; status?: string; detail?: string };
+    setUploadingSource(false);
     if (!response.ok || !data.batch_id) {
-      setUploadingSource(false);
       setUiError(data.detail || 'Upload failed.');
       return;
     }
@@ -426,12 +512,9 @@ const EasyModeScreen: React.FC = () => {
       progress: 0,
       pages_done: 0,
     });
-    setUploadingSource(false);
     setUiNotice(`Upload started for batch ${data.batch_id}.`);
     await loadBatches();
-    if (data.job_id) {
-      await pollJob(data.job_id, data.batch_id);
-    }
+    if (data.job_id) await pollJob(data.job_id, data.batch_id);
   }
 
   async function parseAnswerKey() {
@@ -449,8 +532,15 @@ const EasyModeScreen: React.FC = () => {
     setReviewConfirmed(false);
     const form = new FormData();
     form.append('file', answerKeyFile);
+    const params = new URLSearchParams({
+      max_pages: String(answerKeyScope.maxPages),
+      start_page: String(answerKeyScope.startPage),
+      min_q: String(answerKeyScope.minQuestion),
+      max_q: String(answerKeyScope.maxQuestion),
+      ocr_dpi: String(answerKeyScope.ocrDpi),
+    });
     const response = await apiFetch(
-      `${PYTHON_API_BASE}/draft/answer-key/parse?max_pages=20&start_page=1&min_q=1&max_q=1200&ocr_dpi=300`,
+      `${PYTHON_API_BASE}/draft/answer-key/parse?${params.toString()}`,
       {
         method: 'POST',
         headers: authHeaders(),
@@ -458,8 +548,7 @@ const EasyModeScreen: React.FC = () => {
       }
     );
     const data = (await response.json()) as { pairs?: ParsedPair[]; detail?: string };
-    const elapsed = Math.max(0, Math.floor((Date.now() - parseStart) / 1000));
-    setParseSeconds(elapsed);
+    setParseSeconds(Math.max(0, Math.floor((Date.now() - parseStart) / 1000)));
     setParseStartedAt(null);
     if (!response.ok) {
       setUiError(data.detail || 'Answer key parse failed.');
@@ -468,9 +557,7 @@ const EasyModeScreen: React.FC = () => {
     }
     const pairs = Array.isArray(data.pairs) ? data.pairs : [];
     setReviewedPairs(pairs.map(pair => ({ number: pair.number, answer: String(pair.answer || '').toUpperCase() })));
-    setAnswerKeyStatus(
-      pairs.length ? `Parsed ${pairs.length} answers. Review them, then apply.` : 'No answers found in the key.'
-    );
+    setAnswerKeyStatus(pairs.length ? `Parsed ${pairs.length} answers. Review and apply.` : 'No answers found in the key.');
   }
 
   async function applyReviewedAnswers() {
@@ -493,7 +580,6 @@ const EasyModeScreen: React.FC = () => {
       return;
     }
     setUiError('');
-    setAnswerKeyStatus(`Applying ${validPairs.length} reviewed answers...`);
     const response = await apiFetch(`${PYTHON_API_BASE}/draft/${selectedBatchId}/answer-key/apply`, {
       method: 'POST',
       headers: {
@@ -512,8 +598,8 @@ const EasyModeScreen: React.FC = () => {
       setUiError(data.detail || 'Failed to apply reviewed answers.');
       return;
     }
-    setAnswerKeyStatus(`Applied ${data.applied_count || 0} answers from the reviewed key.`);
     setUiNotice(`Applied ${data.applied_count || 0} reviewed answers.`);
+    setAnswerKeyStatus(`Applied ${data.applied_count || 0} reviewed answers.`);
     await loadDraft(selectedBatchId);
   }
 
@@ -530,6 +616,7 @@ const EasyModeScreen: React.FC = () => {
     });
     setSavingQuestionId('');
     if (!response.ok) {
+      setUiError('Failed to save this question change.');
       return false;
     }
     setDraft(prev => {
@@ -577,7 +664,7 @@ const EasyModeScreen: React.FC = () => {
   }
 
   async function validateBatchBeforeCommit() {
-    if (!draft?.questions?.length || !selectedBatchId) return;
+    if (!selectedBatchId || !draft?.questions?.length) return;
     setValidateBusy(true);
     setUiError('');
     const payload = buildBulkPayload(selectedBatchId, draft.questions);
@@ -589,17 +676,17 @@ const EasyModeScreen: React.FC = () => {
       },
       body: JSON.stringify({ questions: payload }),
     });
-    const raw = (await response.json()) as { validCount?: number; failedCount?: number; detail?: string };
+    const data = (await response.json()) as { validCount?: number; failedCount?: number; detail?: string };
     setValidateBusy(false);
     if (!response.ok) {
-      setUiError(raw.detail || 'Validation failed.');
+      setUiError(data.detail || 'Validation failed.');
       return;
     }
-    setUiNotice(`Check complete. Valid ${raw.validCount || 0}, failed ${raw.failedCount || 0}.`);
+    setUiNotice(`Check complete. Valid ${data.validCount || 0}, failed ${data.failedCount || 0}.`);
   }
 
   async function commitBatch() {
-    if (!draft?.questions?.length || !selectedBatchId) return;
+    if (!selectedBatchId || !draft?.questions?.length) return;
     setCommitBusy(true);
     setUiError('');
     setCommitResult('');
@@ -612,7 +699,7 @@ const EasyModeScreen: React.FC = () => {
       },
       body: JSON.stringify({ questions: payload, chunkSize: 100 }),
     });
-    const data = (await response.json()) as CommitResponse & { detail?: string };
+    const data = (await response.json()) as CommitResponse;
     setCommitBusy(false);
     if (!response.ok) {
       setUiError(data.detail || 'Commit failed.');
@@ -620,52 +707,113 @@ const EasyModeScreen: React.FC = () => {
     }
     const inserted = data.insertedCount ?? data.inserted ?? 0;
     const failed = data.failedCount ?? data.failed ?? 0;
-    setCommitResult(`Committed ${inserted} questions. ${failed > 0 ? `${failed} failed.` : 'No failures reported.'}`);
+    setCommitResult(`Committed ${inserted} questions.${failed > 0 ? ` ${failed} failed.` : ''}`);
     setUiNotice(`Commit finished. Inserted ${inserted}.`);
   }
 
-  const questions = useMemo(() => draft?.questions || [], [draft?.questions]);
-  const assetEntries = useMemo(
+  const questions = useMemo(() => {
+    const next = [...(draft?.questions || [])];
+    next.sort(compareQuestions);
+    return next;
+  }, [draft?.questions]);
+  const selectedBatch = useMemo(
+    () => batches.find(batch => batch.batch_id === selectedBatchId) || null,
+    [batches, selectedBatchId]
+  );
+  const answerKeyScope = useMemo(() => {
+    const pageNumbers = questions
+      .map(question => Number(question.source_page || 0))
+      .filter(page => Number.isFinite(page) && page > 0);
+    const questionNumbers = questions
+      .map((question, index) => normalizeQuestionNumber(question, index + 1))
+      .filter(number => Number.isFinite(number) && number > 0);
+
+    const maxPageFromQuestions = pageNumbers.length ? Math.max(...pageNumbers) : 0;
+    const totalPages =
+      maxPageFromQuestions ||
+      Number(jobStatus?.total_pages || 0) ||
+      Number(selectedBatch?.total_pages || 0) ||
+      1;
+
+    const minQuestion = questionNumbers.length ? Math.min(...questionNumbers) : 1;
+    const maxQuestion =
+      questionNumbers.length
+        ? Math.max(...questionNumbers)
+        : Number(jobStatus?.total_questions || 0) || Number(selectedBatch?.total_questions || 0) || 1200;
+
+    return {
+      startPage: 1,
+      maxPages: Math.max(1, totalPages),
+      minQuestion: Math.max(1, minQuestion),
+      maxQuestion: Math.max(1, maxQuestion),
+      ocrDpi: 300,
+    };
+  }, [jobStatus?.total_pages, jobStatus?.total_questions, questions, selectedBatch?.total_pages, selectedBatch?.total_questions]);
+  const subjectOptions = useMemo(
     () =>
-      Object.entries(draft?.image_assets || {}).map(([key, asset]) => ({
-        key,
-        ...asset,
-      })),
+      includeCurrentOption(
+        toUniqueSorted(catalogRows.map(row => readCatalogSubject(row))),
+        metadataDraft.subject
+      ),
+    [catalogRows, metadataDraft.subject]
+  );
+  const assetEntries = useMemo(
+    () => Object.entries(draft?.image_assets || {}).map(([key, asset]) => ({ key, ...asset })),
     [draft]
   );
 
-  const reviewQuestions = useMemo(() => questions.filter(question => estimateQuestionIssue(question).review), [questions]);
+  const reviewQueue = useMemo(
+    () =>
+      questions
+        .map((question, index) => ({ question, index, reasons: getReviewReasons(question) }))
+        .filter(item => item.reasons.length > 0),
+    [questions]
+  );
 
-  const visibleQuestions = questionFilter === 'review' ? reviewQuestions : questions;
+  useEffect(() => {
+    if (reviewQueue.length === 0) {
+      setReviewIndex(0);
+      return;
+    }
+    if (reviewIndex > reviewQueue.length - 1) {
+      setReviewIndex(0);
+    }
+  }, [reviewIndex, reviewQueue.length]);
+
+  const safeReviewIndex = reviewIndex >= 0 && reviewIndex < reviewQueue.length ? reviewIndex : 0;
+  const currentReviewItem = reviewQueue.find((_, index) => index === safeReviewIndex) || null;
+  const currentQuestion = currentReviewItem?.question || null;
+  const currentQuestionNumber = currentQuestion
+    ? normalizeQuestionNumber(currentQuestion, currentReviewItem ? currentReviewItem.index + 1 : 1)
+    : 0;
+  const currentOptions = currentQuestion && Array.isArray(currentQuestion.options) ? currentQuestion.options : [];
+  const currentAnswer = currentQuestion ? serializeCorrectAnswer(currentQuestion) : '';
+  const currentAnswers = currentQuestion ? serializeCorrectAnswers(currentQuestion) : [];
+  const currentQuestionType = currentQuestion?.questionType || currentQuestion?.question_type || 'single_correct';
+  const currentDifficultyType = currentQuestion?.difficulty_type || '';
+  const currentLevel =
+    currentQuestion?.difficulty_level !== null && currentQuestion?.difficulty_level !== undefined
+      ? String(currentQuestion.difficulty_level)
+      : '';
+  const currentPageAssets = currentQuestion
+    ? assetEntries.filter(asset => asset.source_page === currentQuestion.source_page)
+    : [];
 
   const summary = useMemo(() => {
     const unanswered = questions.filter(question => !serializeCorrectAnswer(question)).length;
     const blankText = questions.filter(question => normalizeQuestionText(question).length < 12).length;
-    const missingMetadata = questions.filter(question => {
-      return !question.subject_name || !question.chapter_name || !question.topic_name || !question.exam_type;
-    }).length;
-    const withDiagrams = questions.filter(question => assetEntries.some(asset => asset.source_page === question.source_page)).length;
+    const missingMetadata = questions.filter(question => !question.subject_name || !question.chapter_name || !question.topic_name || !question.exam_type).length;
     return {
       total: questions.length,
-      reviewNeeded: reviewQuestions.length,
+      reviewNeeded: reviewQueue.length,
       unanswered,
       blankText,
       missingMetadata,
-      withDiagrams,
     };
-  }, [assetEntries, questions, reviewQuestions.length]);
-
-  const parseEstimate = useMemo(() => {
-    if (!parseStartedAt) return null;
-    return Math.max(8, 20 * 4);
-  }, [parseStartedAt]);
+  }, [questions, reviewQueue.length]);
 
   const sourceElapsed = sourceStartedAt ? Math.floor((nowTs - sourceStartedAt) / 1000) : null;
   const parseElapsed = parseStartedAt ? Math.floor((nowTs - parseStartedAt) / 1000) : null;
-
-  function diagramsForQuestion(question: DraftQuestion) {
-    return assetEntries.filter(asset => asset.source_page === question.source_page);
-  }
 
   function assetUrl(filename: string) {
     const token = encodeURIComponent(localStorage.getItem('token') || '');
@@ -687,329 +835,496 @@ const EasyModeScreen: React.FC = () => {
 
   return (
     <div className="easy-mode-page">
-      <div className="easy-mode-shell">
-        <header className="easy-mode-hero">
+      <div className="easy-mode-shell easy-mode-shell--focused">
+        <header className="easy-mode-hero easy-mode-hero--compact">
           <div>
-            <p className="easy-mode-eyebrow">New Workflow</p>
+            <p className="easy-mode-eyebrow">Operator Workflow</p>
             <h2 className="easy-mode-title">Easy Mode</h2>
-            <p className="easy-mode-copy">
-              Fast upload, fast answer-key review, and only the questions that actually need attention.
-            </p>
+            <p className="easy-mode-copy">Fill the top context once, then fix one flagged question at a time.</p>
           </div>
           <div className="easy-mode-hero-stats">
             <div>
-              <span>Total</span>
+              <span>Batch</span>
+              <strong>{selectedBatchId || 'None'}</strong>
+            </div>
+            <div>
+              <span>Questions</span>
               <strong>{summary.total}</strong>
             </div>
             <div>
-              <span>Needs Review</span>
+              <span>Need Review</span>
               <strong>{summary.reviewNeeded}</strong>
-            </div>
-            <div>
-              <span>Ready</span>
-              <strong>{Math.max(0, summary.total - summary.reviewNeeded)}</strong>
             </div>
           </div>
         </header>
 
-        <div className="easy-mode-stepper">
-          {['Batch', 'Source', 'Answer Key', 'Review', 'Metadata', 'Commit'].map(step => (
-            <div className="easy-mode-step" key={step}>
-              <span>{step}</span>
-            </div>
-          ))}
-        </div>
-
-        <section className="easy-card">
-          <div className="easy-card-head">
-            <div>
-              <p className="easy-card-kicker">Step 0</p>
-              <h3>Choose or create a batch</h3>
-            </div>
-            <button className="easy-btn subtle" type="button" onClick={() => void loadBatches()}>
-              Refresh batches
-            </button>
-          </div>
-          <div className="easy-batch-grid">
-            <div className="easy-batch-create">
-              <label className="easy-file-pick">
-                <span>Source PDF or DOCX</span>
-                <input type="file" accept=".pdf,.doc,.docx" onChange={e => setSourceFile(e.target.files?.[0] || null)} />
-              </label>
-              <button className="easy-btn primary" type="button" disabled={uploadingSource} onClick={() => void uploadSourceBatch()}>
-                {uploadingSource ? 'Uploading...' : 'Upload and Start'}
-              </button>
-              <p className="easy-muted">{sourceFile ? sourceFile.name : 'No file selected yet.'}</p>
-            </div>
-            <div className="easy-batch-list">
-              {batches.slice(0, 8).map(batch => (
-                <button
-                  type="button"
-                  key={batch.batch_id}
-                  className={`easy-batch-item ${selectedBatchId === batch.batch_id ? 'active' : ''}`}
-                  onClick={() => setSelectedBatchId(batch.batch_id)}
-                >
-                  <strong>{batch.batch_id}</strong>
-                  <span>{batch.file_name || 'Untitled batch'}</span>
-                  <small>{batch.status}{typeof batch.total_questions === 'number' ? ` • ${batch.total_questions} questions` : ''}</small>
-                </button>
-              ))}
-            </div>
-          </div>
-        </section>
-
-        <section className="easy-card">
-          <div className="easy-card-head">
-            <div>
-              <p className="easy-card-kicker">Step 1</p>
-              <h3>Source processing</h3>
-            </div>
-          </div>
-          <div className="easy-status-grid">
-            <div className="easy-status-card">
-              <span>Selected batch</span>
-              <strong>{selectedBatchId || 'None'}</strong>
-            </div>
-            <div className="easy-status-card">
-              <span>Status</span>
-              <strong>{jobStatus?.status || selectedBatch?.status || draft?.status || 'Waiting'}</strong>
-            </div>
-            <div className="easy-status-card">
-              <span>Progress</span>
-              <strong>{typeof jobStatus?.progress === 'number' ? `${jobStatus.progress}%` : typeof selectedBatch?.progress === 'number' ? `${selectedBatch.progress}%` : 'Not started'}</strong>
-            </div>
-            <div className="easy-status-card">
-              <span>Pages</span>
-              <strong>
-                {typeof jobStatus?.pages_done === 'number'
-                  ? `${jobStatus.pages_done}/${jobStatus.total_pages || '?'}`
-                  : typeof selectedBatch?.pages_done === 'number'
-                  ? `${selectedBatch.pages_done}/${selectedBatch.total_pages || '?'}`
-                  : 'Unknown'}
-              </strong>
-            </div>
-            <div className="easy-status-card">
-              <span>Elapsed</span>
-              <strong>{sourceElapsed !== null ? formatDuration(sourceElapsed) : 'Not running'}</strong>
-            </div>
-          </div>
-        </section>
-
-        <section className="easy-card">
-          <div className="easy-card-head">
-            <div>
-              <p className="easy-card-kicker">Step 2</p>
-              <h3>Upload answer key</h3>
-            </div>
-          </div>
-          <div className="easy-key-top">
-            <label className="easy-file-pick wide">
-              <span>Answer key file</span>
-              <input type="file" accept=".pdf,.png,.jpg,.jpeg,.doc,.docx" onChange={e => setAnswerKeyFile(e.target.files?.[0] || null)} />
-            </label>
-            <button className="easy-btn primary" type="button" onClick={() => void parseAnswerKey()}>
-              Parse Answer Key
-            </button>
-            <button
-              className="easy-btn secondary"
-              type="button"
-              onClick={() => void applyReviewedAnswers()}
-              disabled={!reviewedPairs.length || !reviewConfirmed}
-            >
-              Apply Reviewed Answers
-            </button>
-          </div>
-          <div className="easy-parse-grid">
-            <div className="easy-status-card">
-              <span>Status</span>
-              <strong>{answerKeyStatus}</strong>
-            </div>
-            <div className="easy-status-card">
-              <span>Elapsed</span>
-              <strong>{parseElapsed !== null ? formatDuration(parseElapsed) : parseSeconds !== null ? formatDuration(parseSeconds) : 'Not started'}</strong>
-            </div>
-            <div className="easy-status-card">
-              <span>Estimated total</span>
-              <strong>{parseEstimate !== null ? formatDuration(parseEstimate) : parseSeconds !== null ? formatDuration(parseSeconds) : 'Waiting'}</strong>
-            </div>
-            <div className="easy-status-card">
-              <span>Answers done</span>
-              <strong>{reviewedPairs.length}</strong>
-            </div>
-          </div>
-          {reviewedPairs.length > 0 ? (
-            <div className="easy-answer-review">
-              <div className="easy-answer-review-head">
-                <strong>Review answers before apply</strong>
-                <span>{reviewedPairs.length} parsed answers</span>
+        <section className="easy-top-stack">
+          <div className="easy-card">
+            <div className="easy-card-head">
+              <div>
+                <p className="easy-card-kicker">First</p>
+                <h3>Choose batch or upload source</h3>
               </div>
-              <div className="easy-answer-table">
-                {reviewedPairs.map((pair, index) => (
-                  <div className="easy-answer-row" key={`${pair.number}-${index}`}>
-                    <input type="number" value={pair.number} onChange={e => updateReviewedPair(index, 'number', e.target.value)} />
-                    <select value={pair.answer} onChange={e => updateReviewedPair(index, 'answer', e.target.value)}>
-                      <option value="">Blank</option>
-                      {ANSWER_CHOICES.map(choice => (
-                        <option value={choice} key={`${pair.number}-${choice}`}>
-                          {choice}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
+              <button className="easy-btn subtle" type="button" onClick={() => void loadBatches()}>
+                Refresh
+              </button>
+            </div>
+            <div className="easy-batch-grid easy-batch-grid--top">
+              <div className="easy-batch-create">
+                <label className="easy-file-pick">
+                  <span>Source PDF or DOCX</span>
+                  <input type="file" accept=".pdf,.doc,.docx" onChange={e => setSourceFile(e.target.files?.[0] || null)} />
+                </label>
+                <button className="easy-btn primary" type="button" disabled={uploadingSource} onClick={() => void uploadSourceBatch()}>
+                  {uploadingSource ? 'Uploading...' : 'Upload and Start'}
+                </button>
+                <p className="easy-muted">{sourceFile ? sourceFile.name : 'No file selected yet.'}</p>
+              </div>
+              <div className="easy-batch-list easy-batch-list--compact">
+                {batches.slice(0, 6).map(batch => (
+                  <button
+                    type="button"
+                    key={batch.batch_id}
+                    className={`easy-batch-item ${selectedBatchId === batch.batch_id ? 'active' : ''}`}
+                    onClick={() => setSelectedBatchId(batch.batch_id)}
+                  >
+                    <strong>{batch.batch_id}</strong>
+                    <span>{batch.file_name || 'Untitled batch'}</span>
+                    <small>{batch.status}{typeof batch.total_questions === 'number' ? ` • ${batch.total_questions} questions` : ''}</small>
+                  </button>
                 ))}
               </div>
-              <label className="easy-checkbox">
-                <input type="checkbox" checked={reviewConfirmed} onChange={e => setReviewConfirmed(e.target.checked)} />
-                <span>I reviewed these answers and want to apply them now.</span>
-              </label>
             </div>
-          ) : null}
+          </div>
+
+          <div className="easy-card easy-card--sticky">
+            <div className="easy-card-head">
+              <div>
+                <p className="easy-card-kicker">Always visible</p>
+                <h3>Batch context</h3>
+              </div>
+            </div>
+            <div className="easy-status-grid easy-status-grid--sticky">
+              <div className="easy-status-card">
+                <span>Status</span>
+                <strong>{jobStatus?.status || selectedBatch?.status || draft?.status || 'Waiting'}</strong>
+              </div>
+              <div className="easy-status-card">
+                <span>Progress</span>
+                <strong>{typeof jobStatus?.progress === 'number' ? `${jobStatus.progress}%` : typeof selectedBatch?.progress === 'number' ? `${selectedBatch.progress}%` : 'Not started'}</strong>
+              </div>
+              <div className="easy-status-card">
+                <span>Pages</span>
+                <strong>
+                  {typeof jobStatus?.pages_done === 'number'
+                    ? `${jobStatus.pages_done}/${jobStatus.total_pages || '?'}`
+                    : typeof selectedBatch?.pages_done === 'number'
+                    ? `${selectedBatch.pages_done}/${selectedBatch.total_pages || '?'}`
+                    : 'Unknown'}
+                </strong>
+              </div>
+              <div className="easy-status-card">
+                <span>Elapsed</span>
+                <strong>{sourceElapsed !== null ? formatDuration(sourceElapsed) : 'Not running'}</strong>
+              </div>
+            </div>
+          </div>
         </section>
 
-        <section className="easy-card">
+        <section className="easy-card easy-card--metadata-first">
           <div className="easy-card-head">
             <div>
-              <p className="easy-card-kicker">Step 3</p>
-              <h3>Fix only what needs review</h3>
+              <p className="easy-card-kicker">Set this before review</p>
+              <h3>Important metadata</h3>
             </div>
-            <div className="easy-segment">
-              <button type="button" className={questionFilter === 'review' ? 'active' : ''} onClick={() => setQuestionFilter('review')}>
-                Needs Review
+            <div className="easy-card-actions">
+              <button className="easy-btn subtle easy-mobile-toggle" type="button" onClick={() => setShowMetadataPanel(prev => !prev)}>
+                {showMetadataPanel ? 'Hide' : 'Show'}
               </button>
-              <button type="button" className={questionFilter === 'all' ? 'active' : ''} onClick={() => setQuestionFilter('all')}>
-                All Questions
+              <button className="easy-btn secondary" type="button" disabled={metadataSaving} onClick={() => void applyMetadataToAll()}>
+                {metadataSaving ? 'Applying...' : 'Apply to all questions'}
               </button>
             </div>
           </div>
-          {visibleQuestions.length === 0 ? (
-            <p className="easy-empty">No questions in this view yet.</p>
-          ) : (
-            <div className="easy-review-list">
-              {visibleQuestions.map((question, index) => {
-                const questionNumber = normalizeQuestionNumber(question, index + 1);
-                const issue = estimateQuestionIssue(question);
-                const answer = serializeCorrectAnswer(question);
-                const options = Array.isArray(question.options) ? question.options : [];
-                const pageAssets = diagramsForQuestion(question);
-                return (
-                  <article className="easy-question-card" key={question.question_id}>
-                    <div className="easy-question-head">
-                      <div>
-                        <strong>Q{questionNumber}</strong>
-                        <span>Page {question.source_page || '?'}</span>
-                      </div>
-                      <div className="easy-question-tags">
-                        {issue.reasons.map(reason => (
-                          <span key={reason}>{reason}</span>
-                        ))}
-                      </div>
-                    </div>
-                    <textarea
-                      className="easy-question-text"
-                      defaultValue={normalizeQuestionText(question)}
-                      placeholder="Question text"
-                      onBlur={e => {
-                        const nextText = e.target.value;
-                        if (nextText !== normalizeQuestionText(question)) {
-                          void patchQuestion(question.question_id, { questionText: nextText });
-                        }
-                      }}
-                    />
-                    <div className="easy-option-list">
-                      {options.map(option => (
-                        <label className="easy-option-row" key={`${question.question_id}-${option.letter}`}>
-                          <span>{normalizeOptionLetter(option.letter)}</span>
-                          <input
-                            type="text"
-                            defaultValue={option.text}
-                            placeholder={`Option ${normalizeOptionLetter(option.letter)}`}
-                            onBlur={e => {
-                              const nextOptions = options.map(item => (item.letter === option.letter ? { ...item, text: e.target.value } : item));
-                              void patchQuestion(question.question_id, { options: nextOptions });
-                            }}
-                          />
-                        </label>
-                      ))}
-                    </div>
-                    <div className="easy-question-footer">
-                      <label className="easy-answer-pick">
-                        <span>Correct answer</span>
-                        <select
-                          value={answer}
-                          onChange={e => {
-                            const nextAnswer = e.target.value.toUpperCase();
-                            void patchQuestion(question.question_id, {
-                              correct_option_letters: nextAnswer,
-                              options: patchOptionsWithAnswer(options, nextAnswer),
-                            });
-                          }}
-                        >
-                          <option value="">Select</option>
-                          {ANSWER_CHOICES.map(choice => (
-                            <option value={choice} key={`${question.question_id}-${choice}`}>
-                              {choice}
-                            </option>
-                          ))}
-                        </select>
-                      </label>
-                      <div className="easy-saving-indicator">{savingQuestionId === question.question_id ? 'Saving...' : 'Auto-saves on blur'}</div>
-                    </div>
-                    {pageAssets.length > 0 ? (
-                      <div className="easy-diagram-strip">
-                        {pageAssets.map(asset => (
-                          <figure key={`${question.question_id}-${asset.key}`}>
-                            <img src={assetUrl(asset.filename)} alt={asset.filename} />
-                            <figcaption>{asset.type || `Page ${question.source_page}`}</figcaption>
-                          </figure>
-                        ))}
-                      </div>
-                    ) : null}
-                  </article>
-                );
-              })}
+          {showMetadataPanel ? (
+            <div className="easy-meta-grid">
+              <label>
+                <span>Subject</span>
+                <select value={metadataDraft.subject} onChange={e => setMetadataDraft(prev => ({ ...prev, subject: e.target.value, chapter: '', topic: '' }))}>
+                  <option value="">Select subject</option>
+                  {subjectOptions.map(subject => (
+                    <option key={subject} value={subject}>
+                      {subject}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label>
+                <span>Chapter</span>
+                <input
+                  value={metadataDraft.chapter}
+                  onChange={e => setMetadataDraft(prev => ({ ...prev, chapter: e.target.value }))}
+                  placeholder="Enter chapter"
+                />
+              </label>
+              <label>
+                <span>Topic</span>
+                <input
+                  value={metadataDraft.topic}
+                  onChange={e => setMetadataDraft(prev => ({ ...prev, topic: e.target.value }))}
+                  placeholder="Enter topic"
+                />
+              </label>
+              <label>
+                <span>Exam type</span>
+                <select value={metadataDraft.examType} onChange={e => setMetadataDraft(prev => ({ ...prev, examType: e.target.value }))}>
+                  <option value="">Select exam type</option>
+                  <option value="JEE">JEE</option>
+                  <option value="JEE Advance">JEE Advance</option>
+                  <option value="NEET">NEET</option>
+                  <option value="JEE/NEET Common">JEE/NEET Common</option>
+                </select>
+              </label>
+              <label>
+                <span>Published year</span>
+                <input value={metadataDraft.publishedYear} onChange={e => setMetadataDraft(prev => ({ ...prev, publishedYear: e.target.value }))} placeholder="2026" />
+              </label>
             </div>
+          ) : (
+            <p className="easy-muted">Metadata is collapsed. Open it when you need to change subject, chapter, topic, exam type, or year.</p>
           )}
         </section>
 
         <section className="easy-card">
           <div className="easy-card-head">
             <div>
-              <p className="easy-card-kicker">Step 4</p>
-              <h3>Important metadata only</h3>
+              <p className="easy-card-kicker">Fast answer-key extraction</p>
+              <h3>Answer key extractor</h3>
             </div>
-            <button className="easy-btn secondary" type="button" disabled={metadataSaving} onClick={() => void applyMetadataToAll()}>
-              {metadataSaving ? 'Applying...' : 'Apply to all questions'}
+            <button className="easy-btn subtle easy-mobile-toggle" type="button" onClick={() => setShowAnswerKeyPanel(prev => !prev)}>
+              {showAnswerKeyPanel ? 'Hide' : 'Show'}
             </button>
           </div>
-          <div className="easy-meta-grid">
-            <label>
-              <span>Subject</span>
-              <input value={metadataDraft.subject} onChange={e => setMetadataDraft(prev => ({ ...prev, subject: e.target.value }))} placeholder="Biology" />
-            </label>
-            <label>
-              <span>Chapter</span>
-              <input value={metadataDraft.chapter} onChange={e => setMetadataDraft(prev => ({ ...prev, chapter: e.target.value }))} placeholder="Plant Physiology" />
-            </label>
-            <label>
-              <span>Topic</span>
-              <input value={metadataDraft.topic} onChange={e => setMetadataDraft(prev => ({ ...prev, topic: e.target.value }))} placeholder="Transpiration" />
-            </label>
-            <label>
-              <span>Exam type</span>
-              <input value={metadataDraft.examType} onChange={e => setMetadataDraft(prev => ({ ...prev, examType: e.target.value }))} placeholder="NEET" />
-            </label>
-            <label>
-              <span>Published year</span>
-              <input value={metadataDraft.publishedYear} onChange={e => setMetadataDraft(prev => ({ ...prev, publishedYear: e.target.value }))} placeholder="2026" />
-            </label>
-          </div>
+          {showAnswerKeyPanel ? (
+            <>
+              <div className="easy-key-top easy-key-top--compact">
+                <label className="easy-file-pick wide">
+                  <span>Answer key file</span>
+                  <input type="file" accept=".pdf,.png,.jpg,.jpeg,.doc,.docx" onChange={e => setAnswerKeyFile(e.target.files?.[0] || null)} />
+                </label>
+                <button className="easy-btn primary" type="button" onClick={() => void parseAnswerKey()}>
+                  Parse
+                </button>
+                <button className="easy-btn secondary" type="button" onClick={() => void applyReviewedAnswers()} disabled={!reviewedPairs.length || !reviewConfirmed}>
+                  Apply key
+                </button>
+              </div>
+              <div className="easy-parse-grid easy-parse-grid--compact">
+                <div className="easy-status-card">
+                  <span>Status</span>
+                  <strong>{answerKeyStatus}</strong>
+                </div>
+                <div className="easy-status-card">
+                  <span>Elapsed</span>
+                  <strong>{parseElapsed !== null ? formatDuration(parseElapsed) : parseSeconds !== null ? formatDuration(parseSeconds) : 'Not started'}</strong>
+                </div>
+                <div className="easy-status-card">
+                  <span>Answers</span>
+                  <strong>{reviewedPairs.length}</strong>
+                </div>
+              </div>
+              {reviewedPairs.length > 0 ? (
+                <div className="easy-answer-review easy-answer-review--collapsed">
+                  <div className="easy-answer-review-head">
+                    <strong>Review the parsed key, then apply</strong>
+                    <span>{reviewedPairs.length} answers</span>
+                  </div>
+                  <div className="easy-answer-table easy-answer-table--short">
+                    {reviewedPairs.map((pair, index) => (
+                      <div className="easy-answer-row" key={`${pair.number}-${index}`}>
+                        <input type="number" value={pair.number} onChange={e => updateReviewedPair(index, 'number', e.target.value)} />
+                        <select value={pair.answer} onChange={e => updateReviewedPair(index, 'answer', e.target.value)}>
+                          <option value="">Blank</option>
+                          {ANSWER_CHOICES.map(choice => (
+                            <option value={choice} key={`${pair.number}-${choice}`}>
+                              {choice}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                    ))}
+                  </div>
+                  <label className="easy-checkbox">
+                    <input type="checkbox" checked={reviewConfirmed} onChange={e => setReviewConfirmed(e.target.checked)} />
+                    <span>I checked these answers and want to apply them.</span>
+                  </label>
+                </div>
+              ) : null}
+            </>
+          ) : (
+            <p className="easy-muted">The answer-key extractor is hidden right now. Open this to upload, parse, review, and apply a key.</p>
+          )}
         </section>
 
-        <section className="easy-card">
+        <section className="easy-card easy-card--review-focus">
           <div className="easy-card-head">
             <div>
-              <p className="easy-card-kicker">Step 5</p>
-              <h3>Final check and commit</h3>
+              <p className="easy-card-kicker">Main task</p>
+              <h3>Fix one flagged question</h3>
+            </div>
+            <div className="easy-review-switch">
+              <button type="button" className={!showAllQuestions ? 'active' : ''} onClick={() => setShowAllQuestions(false)}>
+                Focus mode
+              </button>
+              <button type="button" className={showAllQuestions ? 'active' : ''} onClick={() => setShowAllQuestions(true)}>
+                Show all
+              </button>
+            </div>
+          </div>
+
+          {!showAllQuestions ? (
+            currentQuestion ? (
+              <div key={currentQuestion.question_id}>
+                <div className="easy-queue-bar">
+                  <div>
+                    <strong>Question Q{currentQuestionNumber}</strong>
+                    <span>
+                      Page {currentQuestion.source_page || '?'} • Review queue {reviewIndex + 1} of {reviewQueue.length}
+                    </span>
+                  </div>
+                  <div className="easy-queue-actions">
+                    <button className="easy-btn subtle" type="button" disabled={reviewIndex <= 0} onClick={() => setReviewIndex(prev => Math.max(0, prev - 1))}>
+                      Previous
+                    </button>
+                    <button
+                      className="easy-btn subtle"
+                      type="button"
+                      disabled={reviewIndex >= reviewQueue.length - 1}
+                      onClick={() => setReviewIndex(prev => Math.min(reviewQueue.length - 1, prev + 1))}
+                    >
+                      Next
+                    </button>
+                  </div>
+                </div>
+
+                <div className="easy-focus-tags">
+                  {currentReviewItem?.reasons.map(reason => (
+                    <span key={reason}>{reason}</span>
+                  ))}
+                </div>
+
+                <label className="easy-focus-field">
+                  <span>Question text</span>
+                  <textarea
+                    className="easy-question-text"
+                    defaultValue={normalizeQuestionText(currentQuestion)}
+                    placeholder="Question text"
+                    onBlur={e => {
+                      const nextText = e.target.value;
+                      if (nextText !== normalizeQuestionText(currentQuestion)) {
+                        void patchQuestion(currentQuestion.question_id, { questionText: nextText });
+                      }
+                    }}
+                  />
+                </label>
+
+                <div className="easy-option-list">
+                  {currentOptions.map(option => (
+                    <label className="easy-option-row" key={`${currentQuestion.question_id}-${option.letter}`}>
+                      <span>{normalizeOptionLetter(option.letter)}</span>
+                      <input
+                        type="text"
+                        defaultValue={option.text}
+                        placeholder={`Option ${normalizeOptionLetter(option.letter)}`}
+                        onBlur={e => {
+                          const nextOptions = currentOptions.map(item =>
+                            item.letter === option.letter ? { ...item, text: e.target.value } : item
+                          );
+                          void patchQuestion(currentQuestion.question_id, { options: nextOptions });
+                        }}
+                      />
+                    </label>
+                  ))}
+                </div>
+
+                <div className="easy-question-footer">
+                  <label className="easy-answer-pick">
+                    <span>Correct answer</span>
+                    <div className="easy-answer-stack">
+                      <select
+                        value={currentAnswers[0] || currentAnswer}
+                        onChange={e => {
+                          const firstAnswer = e.target.value.toUpperCase() as AnswerLetter;
+                          const remaining = currentQuestionType === 'multiple_correct' ? currentAnswers.slice(1, 2) : [];
+                          const nextAnswers = [firstAnswer, ...remaining].filter(Boolean) as AnswerLetter[];
+                          void patchQuestion(currentQuestion.question_id, {
+                            correct_option_letters: nextAnswers.join(','),
+                            options:
+                              currentQuestionType === 'multiple_correct'
+                                ? patchOptionsWithAnswers(currentOptions, nextAnswers)
+                                : patchOptionsWithAnswer(currentOptions, firstAnswer),
+                          });
+                        }}
+                      >
+                        <option value="">Select</option>
+                        {ANSWER_CHOICES.map(choice => (
+                          <option value={choice} key={`${currentQuestion.question_id}-${choice}-primary`}>
+                            {choice}
+                          </option>
+                        ))}
+                      </select>
+                      {currentQuestionType === 'multiple_correct' ? (
+                        <>
+                          <label className="easy-inline-check">
+                            <input
+                              type="checkbox"
+                              checked={currentAnswers.length > 1}
+                              onChange={e => {
+                                if (!e.target.checked) {
+                                  const nextAnswers = currentAnswers.slice(0, 1);
+                                  void patchQuestion(currentQuestion.question_id, {
+                                    correct_option_letters: nextAnswers.join(','),
+                                    options: patchOptionsWithAnswers(currentOptions, nextAnswers as AnswerLetter[]),
+                                  });
+                                  return;
+                                }
+                                const seed = (currentAnswers[0] || currentAnswer || 'A') as AnswerLetter;
+                                const second = currentAnswers[1] && currentAnswers[1] !== seed
+                                  ? currentAnswers[1]
+                                  : (ANSWER_CHOICES.find(choice => choice !== seed) || 'B');
+                                const nextAnswers = [seed, second] as AnswerLetter[];
+                                void patchQuestion(currentQuestion.question_id, {
+                                  correct_option_letters: nextAnswers.join(','),
+                                  options: patchOptionsWithAnswers(currentOptions, nextAnswers),
+                                });
+                              }}
+                            />
+                            <span>Multiple correct</span>
+                          </label>
+                          {currentAnswers.length > 1 ? (
+                            <select
+                              value={currentAnswers[1] || ''}
+                              onChange={e => {
+                                const first = (currentAnswers[0] || currentAnswer || '') as AnswerLetter;
+                                const second = e.target.value.toUpperCase() as AnswerLetter;
+                                const nextAnswers = Array.from(new Set([first, second].filter(Boolean))) as AnswerLetter[];
+                                void patchQuestion(currentQuestion.question_id, {
+                                  correct_option_letters: nextAnswers.join(','),
+                                  options: patchOptionsWithAnswers(currentOptions, nextAnswers),
+                                });
+                              }}
+                            >
+                              <option value="">Select second answer</option>
+                              {ANSWER_CHOICES.map(choice => (
+                                <option value={choice} key={`${currentQuestion.question_id}-${choice}-secondary`}>
+                                  {choice}
+                                </option>
+                              ))}
+                            </select>
+                          ) : null}
+                        </>
+                      ) : null}
+                    </div>
+                  </label>
+                  <div className="easy-saving-indicator">
+                    {savingQuestionId === currentQuestion.question_id ? 'Saving...' : 'Changes auto-save'}
+                  </div>
+                </div>
+
+                <div className="easy-quick-details">
+                  <label className="easy-detail-field">
+                    <span>Type</span>
+                    <select
+                      value={currentQuestionType}
+                      onChange={e => {
+                        const nextType = e.target.value;
+                        void patchQuestion(currentQuestion.question_id, {
+                          questionType: nextType,
+                          question_type: nextType,
+                        });
+                      }}
+                    >
+                      <option value="single_correct">Single correct</option>
+                      <option value="multiple_correct">Multiple correct</option>
+                      <option value="numerical">Numerical</option>
+                      <option value="matching">Matching</option>
+                      <option value="assertion_and_reason">Assertion and reason</option>
+                      <option value="statements">Statements</option>
+                    </select>
+                  </label>
+
+                  <label className="easy-detail-field">
+                    <span>Level</span>
+                    <input
+                      type="number"
+                      min="1"
+                      max="3"
+                      value={currentLevel}
+                      placeholder="1-3"
+                      onChange={e => {
+                        const raw = e.target.value;
+                        const parsed = Number(raw);
+                        void patchQuestion(currentQuestion.question_id, {
+                          difficulty_level: raw === '' || !Number.isFinite(parsed) ? null : parsed,
+                        });
+                      }}
+                    />
+                  </label>
+
+                  <label className="easy-detail-field">
+                    <span>Difficulty type</span>
+                    <select
+                      value={currentDifficultyType}
+                      onChange={e => {
+                        void patchQuestion(currentQuestion.question_id, {
+                          difficulty_type: e.target.value,
+                        });
+                      }}
+                    >
+                      <option value="">Select</option>
+                      {DIFFICULTY_TYPES.map(type => (
+                        <option value={type} key={type}>
+                          {type}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                </div>
+
+                {currentPageAssets.length > 0 ? (
+                  <div className="easy-diagram-strip">
+                    {currentPageAssets.map(asset => (
+                      <figure key={`${currentQuestion.question_id}-${asset.key}`}>
+                        <img src={assetUrl(asset.filename)} alt={asset.filename} />
+                        <figcaption>{asset.type || `Page ${currentQuestion.source_page}`}</figcaption>
+                      </figure>
+                    ))}
+                  </div>
+                ) : null}
+              </div>
+            ) : (
+              <div className="easy-ready-card">
+                <strong>No flagged questions right now.</strong>
+                <span>This batch is ready for final check and commit.</span>
+              </div>
+            )
+          ) : (
+            <div className="easy-mini-list">
+              {reviewQueue.map((item, index) => (
+                <button key={item.question.question_id} type="button" className={`easy-mini-item ${index === reviewIndex ? 'active' : ''}`} onClick={() => setReviewIndex(index)}>
+                  <strong>Q{normalizeQuestionNumber(item.question, item.index + 1)}</strong>
+                  <span>{item.reasons.join(', ')}</span>
+                </button>
+              ))}
+            </div>
+          )}
+        </section>
+
+        <section className="easy-card easy-card--commit">
+          <div className="easy-card-head">
+            <div>
+              <p className="easy-card-kicker">Final step</p>
+              <h3>Check and commit</h3>
             </div>
             <div className="easy-card-actions">
               <button className="easy-btn subtle" type="button" disabled={validateBusy} onClick={() => void validateBatchBeforeCommit()}>
@@ -1037,10 +1352,6 @@ const EasyModeScreen: React.FC = () => {
               <span>Blank text</span>
               <strong>{summary.blankText}</strong>
             </div>
-            <div className="easy-summary-card">
-              <span>With diagrams</span>
-              <strong>{summary.withDiagrams}</strong>
-            </div>
             <div className="easy-summary-card warn">
               <span>Missing metadata</span>
               <strong>{summary.missingMetadata}</strong>
@@ -1051,6 +1362,28 @@ const EasyModeScreen: React.FC = () => {
 
         {uiNotice ? <div className="easy-banner notice">{uiNotice}</div> : null}
         {uiError ? <div className="easy-banner error">{uiError}</div> : null}
+
+        <div className="easy-mobile-bar">
+          <button
+            className="easy-btn subtle"
+            type="button"
+            disabled={reviewIndex <= 0 || reviewQueue.length === 0}
+            onClick={() => setReviewIndex(prev => Math.max(0, prev - 1))}
+          >
+            Previous
+          </button>
+          <button
+            className="easy-btn subtle"
+            type="button"
+            disabled={reviewIndex >= reviewQueue.length - 1 || reviewQueue.length === 0}
+            onClick={() => setReviewIndex(prev => Math.min(reviewQueue.length - 1, prev + 1))}
+          >
+            Next
+          </button>
+          <button className="easy-btn primary" type="button" disabled={commitBusy} onClick={() => void commitBatch()}>
+            {commitBusy ? 'Committing...' : 'Commit'}
+          </button>
+        </div>
       </div>
     </div>
   );

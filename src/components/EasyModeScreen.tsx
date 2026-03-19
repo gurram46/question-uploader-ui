@@ -34,6 +34,10 @@ type DraftQuestion = {
   question_type?: string;
   image_url?: string;
   image_urls?: string[];
+  explanation?: string;
+  explanation_text?: string;
+  explanation_image?: string;
+  explanation_images?: string[];
 };
 
 type DraftAsset = {
@@ -287,9 +291,9 @@ function buildBulkPayload(batchId: string, questions: DraftQuestion[]) {
     questionText: normalizeQuestionText(question),
     questionImageKey: normalizeAssetKey(firstImage(question.image_urls || question.image_url)),
     questionImageKeys: toImageList(question.image_urls || question.image_url).map(item => normalizeAssetKey(item)).filter(Boolean),
-    explanationText: null,
-    explanationImageKey: '',
-    explanationImageKeys: [],
+    explanationText: String(question.explanation_text || question.explanation || '').trim() || null,
+    explanationImageKey: normalizeAssetKey(firstImage(question.explanation_images || question.explanation_image)),
+    explanationImageKeys: toImageList(question.explanation_images || question.explanation_image).map(item => normalizeAssetKey(item)).filter(Boolean),
     options: (Array.isArray(question.options) ? question.options : [])
       .filter(option => String(option.text || '').trim())
       .map(option => ({
@@ -343,6 +347,12 @@ const EasyModeScreen: React.FC = () => {
   const [sourceStartedAt, setSourceStartedAt] = useState<number | null>(null);
   const [parseStartedAt, setParseStartedAt] = useState<number | null>(null);
   const [parseSeconds, setParseSeconds] = useState<number | null>(null);
+  const [parseConfig, setParseConfig] = useState({
+    startPage: '1',
+    maxPages: '1',
+    minQuestion: '1',
+    maxQuestion: '1200',
+  });
   const pollTimerRef = useRef<number | null>(null);
   const [metadataDraft, setMetadataDraft] = useState({
     subject: '',
@@ -477,6 +487,23 @@ const EasyModeScreen: React.FC = () => {
     }
   }
 
+  async function uploadAsset(file: File): Promise<string | null> {
+    if (!selectedBatchId) return null;
+    const form = new FormData();
+    form.append('file', file);
+    const response = await apiFetch(`${PYTHON_API_BASE}/draft/assets/${selectedBatchId}/upload`, {
+      method: 'POST',
+      headers: authHeaders(),
+      body: form,
+    });
+    if (!response.ok) {
+      setUiError('Image upload failed.');
+      return null;
+    }
+    const data = (await response.json()) as { filename?: string; key?: string };
+    return data.filename || data.key || null;
+  }
+
   async function uploadSourceBatch() {
     if (!sourceFile) {
       setUiError('Choose a PDF or DOCX first.');
@@ -532,11 +559,15 @@ const EasyModeScreen: React.FC = () => {
     setReviewConfirmed(false);
     const form = new FormData();
     form.append('file', answerKeyFile);
+    const startPage = Math.max(1, Number(parseConfig.startPage) || answerKeyScope.startPage);
+    const maxPages = Math.max(1, Number(parseConfig.maxPages) || answerKeyScope.maxPages);
+    const minQuestion = Math.max(1, Number(parseConfig.minQuestion) || answerKeyScope.minQuestion);
+    const maxQuestion = Math.max(minQuestion, Number(parseConfig.maxQuestion) || answerKeyScope.maxQuestion);
     const params = new URLSearchParams({
-      max_pages: String(answerKeyScope.maxPages),
-      start_page: String(answerKeyScope.startPage),
-      min_q: String(answerKeyScope.minQuestion),
-      max_q: String(answerKeyScope.maxQuestion),
+      max_pages: String(maxPages),
+      start_page: String(startPage),
+      min_q: String(minQuestion),
+      max_q: String(maxQuestion),
       ocr_dpi: String(answerKeyScope.ocrDpi),
     });
     const response = await apiFetch(
@@ -749,6 +780,14 @@ const EasyModeScreen: React.FC = () => {
       ocrDpi: 300,
     };
   }, [jobStatus?.total_pages, jobStatus?.total_questions, questions, selectedBatch?.total_pages, selectedBatch?.total_questions]);
+  useEffect(() => {
+    setParseConfig(prev => ({
+      startPage: prev.startPage && prev.startPage !== '1' ? prev.startPage : String(answerKeyScope.startPage),
+      maxPages: String(answerKeyScope.maxPages),
+      minQuestion: String(answerKeyScope.minQuestion),
+      maxQuestion: String(answerKeyScope.maxQuestion),
+    }));
+  }, [answerKeyScope.maxPages, answerKeyScope.maxQuestion, answerKeyScope.minQuestion, answerKeyScope.startPage]);
   const subjectOptions = useMemo(
     () =>
       includeCurrentOption(
@@ -790,14 +829,22 @@ const EasyModeScreen: React.FC = () => {
   const currentAnswer = currentQuestion ? serializeCorrectAnswer(currentQuestion) : '';
   const currentAnswers = currentQuestion ? serializeCorrectAnswers(currentQuestion) : [];
   const currentQuestionType = currentQuestion?.questionType || currentQuestion?.question_type || 'single_correct';
+  const isNumericalQuestion = currentQuestionType === 'numerical';
   const currentDifficultyType = currentQuestion?.difficulty_type || '';
   const currentLevel =
     currentQuestion?.difficulty_level !== null && currentQuestion?.difficulty_level !== undefined
       ? String(currentQuestion.difficulty_level)
       : '';
+  const currentExplanation = String(currentQuestion?.explanation_text || currentQuestion?.explanation || '').trim();
+  const currentQuestionImages = toImageList(currentQuestion?.image_urls || currentQuestion?.image_url);
+  const currentExplanationImages = toImageList(currentQuestion?.explanation_images || currentQuestion?.explanation_image);
   const currentPageAssets = currentQuestion
     ? assetEntries.filter(asset => asset.source_page === currentQuestion.source_page)
     : [];
+  const currentNumericalValue = currentOptions[0]?.text || '';
+  const currentContextSubject = String(currentQuestion?.subject_name || metadataDraft.subject || '').trim() || 'No subject';
+  const currentContextChapter = String(currentQuestion?.chapter_name || metadataDraft.chapter || '').trim() || 'No chapter';
+  const currentContextTopic = String(currentQuestion?.topic_name || metadataDraft.topic || '').trim() || 'No topic';
 
   const summary = useMemo(() => {
     const unanswered = questions.filter(question => !serializeCorrectAnswer(question)).length;
@@ -1019,6 +1066,48 @@ const EasyModeScreen: React.FC = () => {
                   Apply key
                 </button>
               </div>
+              <div className="easy-scope-grid">
+                <label>
+                  <span>Start page</span>
+                  <input
+                    type="number"
+                    min="1"
+                    value={parseConfig.startPage}
+                    onChange={e => setParseConfig(prev => ({ ...prev, startPage: e.target.value }))}
+                  />
+                </label>
+                <label>
+                  <span>Pages to parse</span>
+                  <input
+                    type="number"
+                    min="1"
+                    value={parseConfig.maxPages}
+                    onChange={e => setParseConfig(prev => ({ ...prev, maxPages: e.target.value }))}
+                  />
+                </label>
+                <label>
+                  <span>First question #</span>
+                  <input
+                    type="number"
+                    min="1"
+                    value={parseConfig.minQuestion}
+                    onChange={e => setParseConfig(prev => ({ ...prev, minQuestion: e.target.value }))}
+                  />
+                </label>
+                <label>
+                  <span>Last question #</span>
+                  <input
+                    type="number"
+                    min="1"
+                    value={parseConfig.maxQuestion}
+                    onChange={e => setParseConfig(prev => ({ ...prev, maxQuestion: e.target.value }))}
+                  />
+                </label>
+              </div>
+              <p className="easy-muted">
+                Parse scope: pages {parseConfig.startPage} to {Math.max(Number(parseConfig.startPage) || 1, (Number(parseConfig.startPage) || 1) + (Number(parseConfig.maxPages) || 1) - 1)} ,
+                questions {parseConfig.minQuestion} to {parseConfig.maxQuestion}
+              </p>
               <div className="easy-parse-grid easy-parse-grid--compact">
                 <div className="easy-status-card">
                   <span>Status</span>
@@ -1113,6 +1202,13 @@ const EasyModeScreen: React.FC = () => {
                   ))}
                 </div>
 
+                <div className="easy-breadcrumb">
+                  <span>{currentContextSubject}</span>
+                  <span>{currentContextChapter}</span>
+                  <span>{currentContextTopic}</span>
+                  <span>Q{currentQuestionNumber}</span>
+                </div>
+
                 <label className="easy-focus-field">
                   <span>Question text</span>
                   <textarea
@@ -1128,28 +1224,88 @@ const EasyModeScreen: React.FC = () => {
                   />
                 </label>
 
-                <div className="easy-option-list">
-                  {currentOptions.map(option => (
-                    <label className="easy-option-row" key={`${currentQuestion.question_id}-${option.letter}`}>
-                      <span>{normalizeOptionLetter(option.letter)}</span>
+                <div className="easy-focus-field">
+                  <span>Question image</span>
+                  <div className="easy-asset-toolbar">
+                    <label className="easy-asset-btn">
+                      <span>Upload question image</span>
                       <input
-                        type="text"
-                        defaultValue={option.text}
-                        placeholder={`Option ${normalizeOptionLetter(option.letter)}`}
-                        onBlur={e => {
-                          const nextOptions = currentOptions.map(item =>
-                            item.letter === option.letter ? { ...item, text: e.target.value } : item
-                          );
-                          void patchQuestion(currentQuestion.question_id, { options: nextOptions });
+                        type="file"
+                        accept="image/*"
+                        onChange={async e => {
+                          const file = e.target.files?.[0];
+                          if (!file || !currentQuestion) return;
+                          const uploaded = await uploadAsset(file);
+                          if (!uploaded) return;
+                          const nextImages = Array.from(new Set([...(currentQuestionImages || []), uploaded]));
+                          await patchQuestion(currentQuestion.question_id, {
+                            image_url: uploaded,
+                            image_urls: nextImages,
+                          });
+                          e.currentTarget.value = '';
                         }}
                       />
                     </label>
-                  ))}
+                  </div>
+
+                  {currentQuestionImages.length > 0 ? (
+                    <div className="easy-inline-gallery">
+                      {currentQuestionImages.map(image => (
+                        <figure key={`${currentQuestion.question_id}-question-${image}`}>
+                          <img src={assetUrl(image)} alt="question" />
+                          <figcaption>Question image</figcaption>
+                        </figure>
+                      ))}
+                    </div>
+                  ) : null}
                 </div>
+
+                {isNumericalQuestion ? (
+                  <label className="easy-focus-field">
+                    <span>Numerical answer</span>
+                    <input
+                      type="text"
+                      defaultValue={currentNumericalValue}
+                      placeholder="Enter numerical answer"
+                      onBlur={e => {
+                        const nextValue = e.target.value;
+                        const nextOptions = [
+                          { ...(currentOptions[0] || { letter: 'A', text: '', is_correct: true }), letter: 'A', text: nextValue, is_correct: true },
+                        ];
+                        void patchQuestion(currentQuestion.question_id, {
+                          correct_option_letters: 'A',
+                          options: nextOptions,
+                        });
+                      }}
+                    />
+                  </label>
+                ) : (
+                  <div className="easy-option-list">
+                    {currentOptions.map(option => (
+                      <label className="easy-option-row" key={`${currentQuestion.question_id}-${option.letter}`}>
+                        <span>{normalizeOptionLetter(option.letter)}</span>
+                        <input
+                          type="text"
+                          defaultValue={option.text}
+                          placeholder={`Option ${normalizeOptionLetter(option.letter)}`}
+                          onBlur={e => {
+                            const nextOptions = currentOptions.map(item =>
+                              item.letter === option.letter ? { ...item, text: e.target.value } : item
+                            );
+                            void patchQuestion(currentQuestion.question_id, { options: nextOptions });
+                          }}
+                        />
+                      </label>
+                    ))}
+                  </div>
+                )}
 
                 <div className="easy-question-footer">
                   <label className="easy-answer-pick">
                     <span>Correct answer</span>
+                    {isNumericalQuestion ? (
+                      <div className="easy-answer-static">Numerical question uses the value above as the answer.</div>
+                    ) : (
                     <div className="easy-answer-stack">
                       <select
                         value={currentAnswers[0] || currentAnswer}
@@ -1225,6 +1381,7 @@ const EasyModeScreen: React.FC = () => {
                         </>
                       ) : null}
                     </div>
+                    )}
                   </label>
                   <div className="easy-saving-indicator">
                     {savingQuestionId === currentQuestion.question_id ? 'Saving...' : 'Changes auto-save'}
@@ -1238,9 +1395,26 @@ const EasyModeScreen: React.FC = () => {
                       value={currentQuestionType}
                       onChange={e => {
                         const nextType = e.target.value;
-                        void patchQuestion(currentQuestion.question_id, {
+                        const patch: Record<string, unknown> = {
                           questionType: nextType,
                           question_type: nextType,
+                        };
+                        if (nextType === 'numerical') {
+                          const firstValue = currentOptions[0]?.text || '';
+                          patch.correct_option_letters = 'A';
+                          patch.options = [
+                            { ...(currentOptions[0] || { letter: 'A', text: '', is_correct: true }), letter: 'A', text: firstValue, is_correct: true },
+                          ];
+                        }
+                        if (nextType === 'single_correct') {
+                          const primary = currentAnswers[0] || currentAnswer || '';
+                          if (primary) {
+                            patch.correct_option_letters = primary;
+                            patch.options = patchOptionsWithAnswer(currentOptions, primary);
+                          }
+                        }
+                        void patchQuestion(currentQuestion.question_id, {
+                          ...patch,
                         });
                       }}
                     >
@@ -1291,12 +1465,146 @@ const EasyModeScreen: React.FC = () => {
                   </label>
                 </div>
 
+                {!isNumericalQuestion ? (
+                  <div className="easy-option-image-grid">
+                    {currentOptions.map(option => (
+                      <label key={`${currentQuestion.question_id}-${option.letter}-image`} className="easy-asset-btn">
+                        <span>Upload image for {normalizeOptionLetter(option.letter)}</span>
+                        <input
+                          type="file"
+                          accept="image/*"
+                          onChange={async e => {
+                            const file = e.target.files?.[0];
+                            if (!file || !currentQuestion) return;
+                            const uploaded = await uploadAsset(file);
+                            if (!uploaded) return;
+                            const nextOptions = currentOptions.map(item =>
+                              item.letter === option.letter
+                                ? {
+                                    ...item,
+                                    image_url: uploaded,
+                                    image_urls: Array.from(new Set([...(item.image_urls || []), uploaded])),
+                                  }
+                                : item
+                            );
+                            await patchQuestion(currentQuestion.question_id, { options: nextOptions });
+                            e.currentTarget.value = '';
+                          }}
+                        />
+                      </label>
+                    ))}
+                  </div>
+                ) : null}
+
+                {!isNumericalQuestion ? (
+                  <div className="easy-inline-gallery">
+                    {currentOptions.flatMap(option =>
+                      toImageList(option.image_urls || option.image_url).map(image => (
+                        <figure key={`${currentQuestion.question_id}-${option.letter}-${image}`}>
+                          <img src={assetUrl(image)} alt={`option ${normalizeOptionLetter(option.letter)}`} />
+                          <figcaption>Option {normalizeOptionLetter(option.letter)}</figcaption>
+                        </figure>
+                      ))
+                    )}
+                  </div>
+                ) : null}
+
+                <label className="easy-focus-field">
+                  <span>Explanation</span>
+                  <textarea
+                    className="easy-question-text"
+                    defaultValue={currentExplanation}
+                    placeholder="Add explanation"
+                    onBlur={e => {
+                      const nextText = e.target.value;
+                      if (!currentQuestion || nextText === currentExplanation) return;
+                      void patchQuestion(currentQuestion.question_id, {
+                        explanation: nextText,
+                        explanation_text: nextText,
+                      });
+                    }}
+                  />
+                </label>
+
+                <div className="easy-asset-toolbar">
+                  <label className="easy-asset-btn">
+                    <span>Upload explanation image</span>
+                    <input
+                      type="file"
+                      accept="image/*"
+                      onChange={async e => {
+                        const file = e.target.files?.[0];
+                        if (!file || !currentQuestion) return;
+                        const uploaded = await uploadAsset(file);
+                        if (!uploaded) return;
+                        const nextImages = Array.from(new Set([...(currentExplanationImages || []), uploaded]));
+                        await patchQuestion(currentQuestion.question_id, {
+                          explanation_image: uploaded,
+                          explanation_images: nextImages,
+                        });
+                        e.currentTarget.value = '';
+                      }}
+                    />
+                  </label>
+                </div>
+
+                {currentExplanationImages.length > 0 ? (
+                  <div className="easy-inline-gallery">
+                    {currentExplanationImages.map(image => (
+                      <figure key={`${currentQuestion.question_id}-explanation-${image}`}>
+                        <img src={assetUrl(image)} alt="explanation" />
+                        <figcaption>Explanation image</figcaption>
+                      </figure>
+                    ))}
+                  </div>
+                ) : null}
+
                 {currentPageAssets.length > 0 ? (
                   <div className="easy-diagram-strip">
                     {currentPageAssets.map(asset => (
                       <figure key={`${currentQuestion.question_id}-${asset.key}`}>
                         <img src={assetUrl(asset.filename)} alt={asset.filename} />
                         <figcaption>{asset.type || `Page ${currentQuestion.source_page}`}</figcaption>
+                        <div className="easy-page-attach-actions">
+                          <button
+                            type="button"
+                            onClick={() => void patchQuestion(currentQuestion.question_id, {
+                              image_url: asset.filename,
+                              image_urls: Array.from(new Set([...(currentQuestionImages || []), asset.filename])),
+                            })}
+                          >
+                            Use for question
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => void patchQuestion(currentQuestion.question_id, {
+                              explanation_image: asset.filename,
+                              explanation_images: Array.from(new Set([...(currentExplanationImages || []), asset.filename])),
+                            })}
+                          >
+                            Use for explanation
+                          </button>
+                          {!isNumericalQuestion ? currentOptions.map(option => (
+                            <button
+                              key={`${asset.filename}-${option.letter}`}
+                              type="button"
+                              onClick={() => {
+                                const nextOptions = currentOptions.map(item =>
+                                  item.letter === option.letter
+                                    ? {
+                                        ...item,
+                                        image_url: asset.filename,
+                                        image_urls: Array.from(new Set([...(item.image_urls || []), asset.filename])),
+                                      }
+                                    : item
+                                );
+                                void patchQuestion(currentQuestion.question_id, { options: nextOptions });
+                              }}
+                            >
+                              Use for {normalizeOptionLetter(option.letter)}
+                            </button>
+                          )) : null}
+                        </div>
                       </figure>
                     ))}
                   </div>

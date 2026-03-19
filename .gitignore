@@ -5,6 +5,7 @@
 
 # Production build
 /build
+/.firebase
 
 # Environment variables
 .env
@@ -79,6 +80,10 @@ dist
 # Temporary folders
 .tmp
 .cache
+
+# Local helper scripts
+set-env-local.cmd
+set-env-local.ps1
 
 # Editor directories and files
 .vscode/*

@@ -9,6 +9,9 @@ import { useQuestionForm } from '../context/QuestionFormContext';
 const QuestionUploadForm: React.FC = () => {
   const { showSuccess, showError } = useToast();
   const { form, setForm, validationErrors, setValidationErrors, isLoading, setIsLoading } = useQuestionForm();
+  const inputClass = 'w-full px-3 py-2 border rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-primary-500 bg-white text-slate-900 placeholder:text-gray-500';
+  const selectClass = 'w-full px-3 py-2 border rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-primary-500 bg-white text-slate-900';
+  const fileClass = 'w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-primary-500 bg-white text-slate-900 file:text-slate-900';
 
   // Difficulty selection sourced from backend
   const [selectedLevel, setSelectedLevel] = useState<number>(1);
@@ -174,7 +177,7 @@ const QuestionUploadForm: React.FC = () => {
               id="subjectName"
               value={form.subjectName}
               onChange={(e) => handleInputChange('subjectName', e.target.value)}
-              className={`w-full px-3 py-2 border rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-primary-500 ${getFieldError('subjectName') ? 'border-red-500' : 'border-gray-300'}`}
+              className={`${inputClass} ${getFieldError('subjectName') ? 'border-red-500' : 'border-gray-300'}`}
               placeholder="Enter subject name (letters only)"
               disabled={isLoading}
             />
@@ -189,7 +192,7 @@ const QuestionUploadForm: React.FC = () => {
               id="chapterName"
               value={form.chapterName}
               onChange={(e) => handleInputChange('chapterName', e.target.value)}
-              className={`w-full px-3 py-2 border rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-primary-500 ${getFieldError('chapterName') ? 'border-red-500' : 'border-gray-300'}`}
+              className={`${inputClass} ${getFieldError('chapterName') ? 'border-red-500' : 'border-gray-300'}`}
               placeholder="Enter chapter name (letters and numbers)"
               disabled={isLoading}
             />
@@ -204,7 +207,7 @@ const QuestionUploadForm: React.FC = () => {
               id="topicName"
               value={form.topicName}
               onChange={(e) => handleInputChange('topicName', e.target.value)}
-              className={`w-full px-3 py-2 border rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-primary-500 ${getFieldError('topicName') ? 'border-red-500' : 'border-gray-300'}`}
+              className={`${inputClass} ${getFieldError('topicName') ? 'border-red-500' : 'border-gray-300'}`}
               placeholder="Enter topic name (letters and numbers)"
               disabled={isLoading}
             />
@@ -226,7 +229,7 @@ const QuestionUploadForm: React.FC = () => {
                   handleInputChange('difficultyLevel', chosen.level);
                 }
               }}
-              className={`w-full px-3 py-2 border rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-primary-500 ${getFieldError('difficultyLevel') ? 'border-red-500' : 'border-gray-300'}`}
+              className={`${selectClass} ${getFieldError('difficultyLevel') ? 'border-red-500' : 'border-gray-300'}`}
               disabled={isLoading}
             >
               <option value="">Select difficulty</option>
@@ -244,7 +247,7 @@ const QuestionUploadForm: React.FC = () => {
               id="questionType"
               value={form.questionType}
               onChange={(e) => handleInputChange('questionType', e.target.value)}
-              className={`w-full px-3 py-2 border rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-primary-500 ${getFieldError('questionType') ? 'border-red-500' : 'border-gray-300'}`}
+              className={`${selectClass} ${getFieldError('questionType') ? 'border-red-500' : 'border-gray-300'}`}
               disabled={isLoading}
             >
               <option value="">Select question type</option>
@@ -263,7 +266,7 @@ const QuestionUploadForm: React.FC = () => {
               value={form.questionText}
               onChange={(e) => handleInputChange('questionText', e.target.value)}
               rows={4}
-              className={`w-full px-3 py-2 border rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-primary-500 ${getFieldError('questionText') ? 'border-red-500' : 'border-gray-300'}`}
+              className={`${inputClass} ${getFieldError('questionText') ? 'border-red-500' : 'border-gray-300'}`}
               placeholder="Enter the question text..."
               disabled={isLoading}
             />
@@ -278,7 +281,7 @@ const QuestionUploadForm: React.FC = () => {
               id="questionImage"
               accept="image/*"
               onChange={(e) => handleFileChange('questionImage', e.target.files?.[0] || null)}
-              className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
+              className={fileClass}
               disabled={isLoading}
             />
             <p className="mt-1 text-sm text-gray-500">Accepted formats: JPG, PNG, WebP. Max size: 5MB</p>
@@ -303,7 +306,7 @@ const QuestionUploadForm: React.FC = () => {
                         value={option.option_text}
                         onChange={(e) => handleOptionChange(index, 'option_text', e.target.value)}
                         placeholder={`Option ${index + 1} text...`}
-                        className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
+                        className={inputClass}
                         disabled={isLoading}
                       />
                     </div>
@@ -357,7 +360,7 @@ const QuestionUploadForm: React.FC = () => {
               value={form.explanation}
               onChange={(e) => handleInputChange('explanation', e.target.value)}
               rows={3}
-              className={`w-full px-3 py-2 border rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-primary-500 ${getFieldError('explanation') ? 'border-red-500' : 'border-gray-300'}`}
+              className={`${inputClass} ${getFieldError('explanation') ? 'border-red-500' : 'border-gray-300'}`}
               placeholder="Optional explanation for the answer..."
               disabled={isLoading}
             />
@@ -372,7 +375,7 @@ const QuestionUploadForm: React.FC = () => {
               id="explanationImage"
               accept="image/*"
               onChange={(e) => handleFileChange('explanationImage', e.target.files?.[0] || null)}
-              className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
+              className={fileClass}
               disabled={isLoading}
             />
           </div>

@@ -179,16 +179,6 @@ function serializeCorrectAnswer(question: DraftQuestion): string {
   return selected ? normalizeOptionLetter(selected.letter) : '';
 }
 
-function patchOptionsWithAnswer(options: DraftOption[], answer: string): DraftOption[] {
-  const wanted = String(answer || '').trim().toUpperCase();
-  return options.map(option => {
-    const normalized = normalizeOptionLetter(option.letter);
-    const numeric = String(option.letter || '').trim();
-    const matches = normalized === wanted || numeric === wanted;
-    return { ...option, is_correct: matches };
-  });
-}
-
 function serializeCorrectAnswers(question: DraftQuestion): AnswerLetter[] {
   const direct = String(question.correct_option_letters || '')
     .split(',')
@@ -251,6 +241,23 @@ function formatDuration(seconds: number): string {
   if (minutes < 60) return `${minutes}m ${remaining}s`;
   const hours = Math.floor(minutes / 60);
   return `${hours}h ${minutes % 60}m`;
+}
+
+function compactBatchId(value: string): string {
+  const text = String(value || '').trim();
+  if (text.length <= 8) return text;
+  return text.slice(0, 8);
+}
+
+function compactFileName(value?: string): string {
+  const text = String(value || '').trim();
+  if (!text) return 'Untitled batch';
+  if (text.length <= 18) return text;
+  const dot = text.lastIndexOf('.');
+  if (dot > 0 && text.length - dot <= 6) {
+    return `${text.slice(0, 10)}...${text.slice(dot)}`;
+  }
+  return `${text.slice(0, 15)}...`;
 }
 
 function readCatalogSubject(row: CatalogRow): string {
@@ -355,8 +362,9 @@ const EasyModeScreen: React.FC = () => {
   const [showAllQuestions, setShowAllQuestions] = useState(false);
   const [showMetadataPanel, setShowMetadataPanel] = useState(true);
   const [showAnswerKeyPanel, setShowAnswerKeyPanel] = useState(true);
+  const [zoomImage, setZoomImage] = useState<{ src: string; label: string } | null>(null);
+  const [imageChoice, setImageChoice] = useState<{ filename: string; target: 'question' | 'explanation' | 'option'; optionLetter?: string } | null>(null);
   const [nowTs, setNowTs] = useState(Date.now());
-  const [sourceStartedAt, setSourceStartedAt] = useState<number | null>(null);
   const [parseStartedAt, setParseStartedAt] = useState<number | null>(null);
   const [parseSeconds, setParseSeconds] = useState<number | null>(null);
   const [parseConfig, setParseConfig] = useState({
@@ -516,6 +524,43 @@ const EasyModeScreen: React.FC = () => {
     return data.filename || data.key || null;
   }
 
+  async function attachImageToTarget(question: DraftQuestion, filename: string, target: 'question' | 'explanation' | 'option', optionLetter?: string) {
+    if (target === 'question') {
+      await patchQuestion(question.question_id, {
+        image_url: filename,
+        image_urls: Array.from(new Set([...(currentQuestionImages || []), filename])),
+      });
+      return;
+    }
+
+    if (target === 'explanation') {
+      await patchQuestion(question.question_id, {
+        explanation_image: filename,
+        explanation_images: Array.from(new Set([...(currentExplanationImages || []), filename])),
+      });
+      return;
+    }
+
+    const nextOptions = currentOptions.map(item =>
+      item.letter === optionLetter
+        ? {
+            ...item,
+            image_url: filename,
+            image_urls: Array.from(new Set([...(item.image_urls || []), filename])),
+          }
+        : item
+    );
+    await patchQuestion(question.question_id, { options: nextOptions });
+  }
+
+  async function uploadOwnImageForChoice(file: File) {
+    if (!currentQuestion || !imageChoice) return;
+    const uploaded = await uploadAsset(file);
+    if (!uploaded) return;
+    await attachImageToTarget(currentQuestion, uploaded, imageChoice.target, imageChoice.optionLetter);
+    setImageChoice(null);
+  }
+
   async function uploadSourceBatch() {
     if (!sourceFile) {
       setUiError('Choose a PDF or DOCX first.');
@@ -524,7 +569,6 @@ const EasyModeScreen: React.FC = () => {
     setUiError('');
     setUiNotice('');
     setUploadingSource(true);
-    setSourceStartedAt(Date.now());
     const form = new FormData();
     form.append('file', sourceFile);
     const username = localStorage.getItem('username') || '';
@@ -882,7 +926,6 @@ const EasyModeScreen: React.FC = () => {
     ? normalizeQuestionNumber(currentQuestion, currentReviewItem ? currentReviewItem.index + 1 : 1)
     : 0;
   const currentOptions = currentQuestion && Array.isArray(currentQuestion.options) ? ensureEditorOptions(currentQuestion.options) : ensureEditorOptions([]);
-  const currentAnswer = currentQuestion ? serializeCorrectAnswer(currentQuestion) : '';
   const currentAnswers = currentQuestion ? serializeCorrectAnswers(currentQuestion) : [];
   const currentQuestionType = currentQuestion?.questionType || currentQuestion?.question_type || 'single_correct';
   const currentDifficultyType = currentQuestion?.difficulty_type || '';
@@ -915,12 +958,15 @@ const EasyModeScreen: React.FC = () => {
 
   const completedCount = Math.max(0, summary.total - summary.reviewNeeded);
 
-  const sourceElapsed = sourceStartedAt ? Math.floor((nowTs - sourceStartedAt) / 1000) : null;
   const parseElapsed = parseStartedAt ? Math.floor((nowTs - parseStartedAt) / 1000) : null;
 
   function assetUrl(filename: string) {
     const token = encodeURIComponent(localStorage.getItem('token') || '');
     return `${PYTHON_API_BASE}/draft/assets/${encodeURIComponent(selectedBatchId)}/${encodeURIComponent(filename)}?token=${token}`;
+  }
+
+  function openZoom(filename: string, label: string) {
+    setZoomImage({ src: assetUrl(filename), label });
   }
 
   function updateReviewedPair(index: number, field: 'number' | 'answer', value: string) {
@@ -961,27 +1007,6 @@ const EasyModeScreen: React.FC = () => {
           </div>
         </header>
 
-        <section className="easy-card easy-card--progress-strip">
-          <div className="easy-progress-strip">
-            <div>
-              <span>Total questions</span>
-              <strong>{summary.total}</strong>
-            </div>
-            <div>
-              <span>Done</span>
-              <strong>{completedCount}</strong>
-            </div>
-            <div>
-              <span>Still needs work</span>
-              <strong>{summary.reviewNeeded}</strong>
-            </div>
-            <div>
-              <span>Current</span>
-              <strong>{currentQuestion ? `Q${currentQuestionNumber}` : 'All done'}</strong>
-            </div>
-          </div>
-        </section>
-
         <section className="easy-top-stack">
           <div className="easy-card">
             <div className="easy-card-head">
@@ -1019,9 +1044,10 @@ const EasyModeScreen: React.FC = () => {
                     key={batch.batch_id}
                     className={`easy-batch-item ${selectedBatchId === batch.batch_id ? 'active' : ''}`}
                     onClick={() => setSelectedBatchId(batch.batch_id)}
+                    title={`${batch.batch_id}\n${batch.file_name || 'Untitled batch'}`}
                   >
-                    <strong>{batch.batch_id}</strong>
-                    <span>{batch.file_name || 'Untitled batch'}</span>
+                    <strong>{compactBatchId(batch.batch_id)}</strong>
+                    <span>{compactFileName(batch.file_name)}</span>
                     <small>{batch.status}{typeof batch.total_questions === 'number' ? ` • ${batch.total_questions} questions` : ''}</small>
                   </button>
                 ))}
@@ -1029,37 +1055,127 @@ const EasyModeScreen: React.FC = () => {
             </div>
           </div>
 
-          <div className="easy-card easy-card--sticky">
+          <div className="easy-card">
             <div className="easy-card-head">
               <div>
-                <p className="easy-card-kicker">Always visible</p>
-                <h3>Batch context</h3>
+                <p className="easy-card-kicker">Second</p>
+                <h3>Answer key extractor</h3>
               </div>
+              <button className="easy-btn subtle easy-mobile-toggle" type="button" onClick={() => setShowAnswerKeyPanel(prev => !prev)}>
+                {showAnswerKeyPanel ? 'Hide' : 'Show'}
+              </button>
             </div>
-            <div className="easy-status-grid easy-status-grid--sticky">
-              <div className="easy-status-card">
-                <span>Status</span>
-                <strong>{jobStatus?.status || selectedBatch?.status || draft?.status || 'Waiting'}</strong>
-              </div>
-              <div className="easy-status-card">
-                <span>Progress</span>
-                <strong>{typeof jobStatus?.progress === 'number' ? `${jobStatus.progress}%` : typeof selectedBatch?.progress === 'number' ? `${selectedBatch.progress}%` : 'Not started'}</strong>
-              </div>
-              <div className="easy-status-card">
-                <span>Pages</span>
-                <strong>
-                  {typeof jobStatus?.pages_done === 'number'
-                    ? `${jobStatus.pages_done}/${jobStatus.total_pages || '?'}`
-                    : typeof selectedBatch?.pages_done === 'number'
-                    ? `${selectedBatch.pages_done}/${selectedBatch.total_pages || '?'}`
-                    : 'Unknown'}
-                </strong>
-              </div>
-              <div className="easy-status-card">
-                <span>Elapsed</span>
-                <strong>{sourceElapsed !== null ? formatDuration(sourceElapsed) : 'Not running'}</strong>
-              </div>
-            </div>
+            {showAnswerKeyPanel ? (
+              <>
+                <div className="easy-key-top easy-key-top--compact">
+                  <label className="easy-file-pick wide">
+                    <span>Answer key file</span>
+                    <div className="easy-file-picker-row">
+                      <label className="easy-picker-btn">
+                        <span>Choose file</span>
+                        <input type="file" accept=".pdf,.png,.jpg,.jpeg,.doc,.docx" onChange={e => setAnswerKeyFile(e.target.files?.[0] || null)} />
+                      </label>
+                      <div className="easy-file-name" title={answerKeyFile?.name || 'No file selected'}>
+                        {answerKeyFile ? answerKeyFile.name : 'No file selected'}
+                      </div>
+                    </div>
+                  </label>
+                  <div className="easy-key-actions">
+                    <button className="easy-btn primary" type="button" onClick={() => void parseAnswerKey()}>
+                      Parse
+                    </button>
+                    <button className="easy-btn secondary" type="button" onClick={() => void applyReviewedAnswers()} disabled={!reviewedPairs.length || !reviewConfirmed}>
+                      Apply key
+                    </button>
+                  </div>
+                </div>
+                <div className="easy-scope-grid">
+                  <label>
+                    <span>Start page</span>
+                    <input
+                      type="number"
+                      min="1"
+                      value={parseConfig.startPage}
+                      onChange={e => setParseConfig(prev => ({ ...prev, startPage: e.target.value }))}
+                    />
+                  </label>
+                  <label>
+                    <span>Pages to parse</span>
+                    <input
+                      type="number"
+                      min="1"
+                      value={parseConfig.maxPages}
+                      onChange={e => setParseConfig(prev => ({ ...prev, maxPages: e.target.value }))}
+                    />
+                  </label>
+                  <label>
+                    <span>First question #</span>
+                    <input
+                      type="number"
+                      min="1"
+                      value={parseConfig.minQuestion}
+                      onChange={e => setParseConfig(prev => ({ ...prev, minQuestion: e.target.value }))}
+                    />
+                  </label>
+                  <label>
+                    <span>Last question #</span>
+                    <input
+                      type="number"
+                      min="1"
+                      value={parseConfig.maxQuestion}
+                      onChange={e => setParseConfig(prev => ({ ...prev, maxQuestion: e.target.value }))}
+                    />
+                  </label>
+                </div>
+                <p className="easy-muted">
+                  Parse scope: pages {parseConfig.startPage} to {Math.max(Number(parseConfig.startPage) || 1, (Number(parseConfig.startPage) || 1) + (Number(parseConfig.maxPages) || 1) - 1)} ,
+                  questions {parseConfig.minQuestion} to {parseConfig.maxQuestion}
+                </p>
+                <div className="easy-parse-grid easy-parse-grid--compact">
+                  <div className="easy-status-card">
+                    <span>Status</span>
+                    <strong>{answerKeyStatus}</strong>
+                  </div>
+                  <div className="easy-status-card">
+                    <span>Elapsed</span>
+                    <strong>{parseElapsed !== null ? formatDuration(parseElapsed) : parseSeconds !== null ? formatDuration(parseSeconds) : 'Not started'}</strong>
+                  </div>
+                  <div className="easy-status-card">
+                    <span>Answers</span>
+                    <strong>{reviewedPairs.length}</strong>
+                  </div>
+                </div>
+                {reviewedPairs.length > 0 ? (
+                  <div className="easy-answer-review easy-answer-review--collapsed">
+                    <div className="easy-answer-review-head">
+                      <strong>Review the parsed key, then apply</strong>
+                      <span>{reviewedPairs.length} answers</span>
+                    </div>
+                    <div className="easy-answer-table easy-answer-table--short">
+                      {reviewedPairs.map((pair, index) => (
+                        <div className="easy-answer-row" key={`${pair.number}-${index}`}>
+                          <input type="number" value={pair.number} onChange={e => updateReviewedPair(index, 'number', e.target.value)} />
+                          <select value={pair.answer} onChange={e => updateReviewedPair(index, 'answer', e.target.value)}>
+                            <option value="">Blank</option>
+                            {ANSWER_CHOICES.map(choice => (
+                              <option value={choice} key={`${pair.number}-${choice}`}>
+                                {choice}
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+                      ))}
+                    </div>
+                    <label className="easy-checkbox">
+                      <input type="checkbox" checked={reviewConfirmed} onChange={e => setReviewConfirmed(e.target.checked)} />
+                      <span>I checked these answers and want to apply them.</span>
+                    </label>
+                  </div>
+                ) : null}
+              </>
+            ) : (
+              <p className="easy-muted">The answer-key extractor is hidden right now. Open this to upload, parse, review, and apply a key.</p>
+            )}
           </div>
         </section>
 
@@ -1127,128 +1243,26 @@ const EasyModeScreen: React.FC = () => {
           )}
         </section>
 
-        <section className="easy-card">
-          <div className="easy-card-head">
-            <div>
-              <p className="easy-card-kicker">Fast answer-key extraction</p>
-              <h3>Answer key extractor</h3>
-            </div>
-            <button className="easy-btn subtle easy-mobile-toggle" type="button" onClick={() => setShowAnswerKeyPanel(prev => !prev)}>
-              {showAnswerKeyPanel ? 'Hide' : 'Show'}
-            </button>
-          </div>
-          {showAnswerKeyPanel ? (
-            <>
-              <div className="easy-key-top easy-key-top--compact">
-                <label className="easy-file-pick wide">
-                  <span>Answer key file</span>
-                  <div className="easy-file-picker-row">
-                    <label className="easy-picker-btn">
-                      <span>Choose file</span>
-                      <input type="file" accept=".pdf,.png,.jpg,.jpeg,.doc,.docx" onChange={e => setAnswerKeyFile(e.target.files?.[0] || null)} />
-                    </label>
-                    <div className="easy-file-name" title={answerKeyFile?.name || 'No file selected'}>
-                      {answerKeyFile ? answerKeyFile.name : 'No file selected'}
-                    </div>
-                  </div>
-                </label>
-                <button className="easy-btn primary" type="button" onClick={() => void parseAnswerKey()}>
-                  Parse
-                </button>
-                <button className="easy-btn secondary" type="button" onClick={() => void applyReviewedAnswers()} disabled={!reviewedPairs.length || !reviewConfirmed}>
-                  Apply key
-                </button>
-              </div>
-              <div className="easy-scope-grid">
-                <label>
-                  <span>Start page</span>
-                  <input
-                    type="number"
-                    min="1"
-                    value={parseConfig.startPage}
-                    onChange={e => setParseConfig(prev => ({ ...prev, startPage: e.target.value }))}
-                  />
-                </label>
-                <label>
-                  <span>Pages to parse</span>
-                  <input
-                    type="number"
-                    min="1"
-                    value={parseConfig.maxPages}
-                    onChange={e => setParseConfig(prev => ({ ...prev, maxPages: e.target.value }))}
-                  />
-                </label>
-                <label>
-                  <span>First question #</span>
-                  <input
-                    type="number"
-                    min="1"
-                    value={parseConfig.minQuestion}
-                    onChange={e => setParseConfig(prev => ({ ...prev, minQuestion: e.target.value }))}
-                  />
-                </label>
-                <label>
-                  <span>Last question #</span>
-                  <input
-                    type="number"
-                    min="1"
-                    value={parseConfig.maxQuestion}
-                    onChange={e => setParseConfig(prev => ({ ...prev, maxQuestion: e.target.value }))}
-                  />
-                </label>
-              </div>
-              <p className="easy-muted">
-                Parse scope: pages {parseConfig.startPage} to {Math.max(Number(parseConfig.startPage) || 1, (Number(parseConfig.startPage) || 1) + (Number(parseConfig.maxPages) || 1) - 1)} ,
-                questions {parseConfig.minQuestion} to {parseConfig.maxQuestion}
-              </p>
-              <div className="easy-parse-grid easy-parse-grid--compact">
-                <div className="easy-status-card">
-                  <span>Status</span>
-                  <strong>{answerKeyStatus}</strong>
-                </div>
-                <div className="easy-status-card">
-                  <span>Elapsed</span>
-                  <strong>{parseElapsed !== null ? formatDuration(parseElapsed) : parseSeconds !== null ? formatDuration(parseSeconds) : 'Not started'}</strong>
-                </div>
-                <div className="easy-status-card">
-                  <span>Answers</span>
-                  <strong>{reviewedPairs.length}</strong>
-                </div>
-              </div>
-              {reviewedPairs.length > 0 ? (
-                <div className="easy-answer-review easy-answer-review--collapsed">
-                  <div className="easy-answer-review-head">
-                    <strong>Review the parsed key, then apply</strong>
-                    <span>{reviewedPairs.length} answers</span>
-                  </div>
-                  <div className="easy-answer-table easy-answer-table--short">
-                    {reviewedPairs.map((pair, index) => (
-                      <div className="easy-answer-row" key={`${pair.number}-${index}`}>
-                        <input type="number" value={pair.number} onChange={e => updateReviewedPair(index, 'number', e.target.value)} />
-                        <select value={pair.answer} onChange={e => updateReviewedPair(index, 'answer', e.target.value)}>
-                          <option value="">Blank</option>
-                          {ANSWER_CHOICES.map(choice => (
-                            <option value={choice} key={`${pair.number}-${choice}`}>
-                              {choice}
-                            </option>
-                          ))}
-                        </select>
-                      </div>
-                    ))}
-                  </div>
-                  <label className="easy-checkbox">
-                    <input type="checkbox" checked={reviewConfirmed} onChange={e => setReviewConfirmed(e.target.checked)} />
-                    <span>I checked these answers and want to apply them.</span>
-                  </label>
-                </div>
-              ) : null}
-            </>
-          ) : (
-            <p className="easy-muted">The answer-key extractor is hidden right now. Open this to upload, parse, review, and apply a key.</p>
-          )}
-        </section>
-
         <section className="easy-card easy-card--review-focus">
+          <div className="easy-progress-strip easy-progress-strip--review">
+            <div>
+              <span>Total questions</span>
+              <strong>{summary.total}</strong>
+            </div>
+            <div>
+              <span>Done</span>
+              <strong>{completedCount}</strong>
+            </div>
+            <div>
+              <span>Still needs work</span>
+              <strong>{summary.reviewNeeded}</strong>
+            </div>
+            <div>
+              <span>Current</span>
+              <strong>{currentQuestion ? `Q${currentQuestionNumber}` : 'All done'}</strong>
+            </div>
+          </div>
+
           <div className="easy-card-head">
             <div>
               <p className="easy-card-kicker">Main task</p>
@@ -1322,34 +1336,15 @@ const EasyModeScreen: React.FC = () => {
 
                 <div className="easy-focus-field">
                   <span>Question image</span>
-                  <div className="easy-asset-toolbar">
-                    <label className="easy-asset-btn">
-                      <span>Upload question image</span>
-                      <input
-                        type="file"
-                        accept="image/*"
-                        onChange={async e => {
-                          const file = e.target.files?.[0];
-                          if (!file || !currentQuestion) return;
-                          const uploaded = await uploadAsset(file);
-                          if (!uploaded) return;
-                          const nextImages = Array.from(new Set([...(currentQuestionImages || []), uploaded]));
-                          await patchQuestion(currentQuestion.question_id, {
-                            image_url: uploaded,
-                            image_urls: nextImages,
-                          });
-                          e.currentTarget.value = '';
-                        }}
-                      />
-                    </label>
-                  </div>
-
+                  <p className="easy-muted">Use the page-image rail to attach this page image, or choose to upload your own.</p>
                   {currentQuestionImages.length > 0 ? (
                     <div className="easy-inline-gallery">
                       {currentQuestionImages.map(image => (
                         <figure key={`${currentQuestion.question_id}-question-${image}`}>
-                          <img src={assetUrl(image)} alt="question" />
-                          <figcaption>Question image</figcaption>
+                          <button type="button" className="easy-zoom-frame" onClick={() => openZoom(image, 'Question image')}>
+                            <img src={assetUrl(image)} alt="question" />
+                          </button>
+                          <figcaption>Question image. Click to zoom.</figcaption>
                         </figure>
                       ))}
                     </div>
@@ -1358,135 +1353,90 @@ const EasyModeScreen: React.FC = () => {
 
                 <div className="easy-option-list">
                   {currentOptions.map(option => (
-                    <label className="easy-option-row" key={`${currentQuestion.question_id}-${option.letter}`}>
-                      <span>{normalizeOptionLetter(option.letter)}</span>
-                      <input
-                        type="text"
-                        defaultValue={option.text}
-                        placeholder={`Option ${normalizeOptionLetter(option.letter)}`}
-                        onBlur={e => {
-                          const nextOptions = currentOptions.map(item =>
-                            item.letter === option.letter ? { ...item, text: e.target.value } : item
-                          );
-                          void patchQuestion(currentQuestion.question_id, { options: nextOptions });
-                        }}
-                      />
-                    </label>
-                  ))}
-                </div>
-
-                <div className="easy-question-footer">
-                  <label className="easy-answer-pick">
-                    <span>Correct answer</span>
-                    <div className="easy-answer-stack">
-                      <select
-                        value={currentAnswers[0] || currentAnswer}
-                        onChange={e => {
-                          const firstAnswer = e.target.value.toUpperCase() as AnswerLetter;
-                          const remaining = currentQuestionType === 'multiple_correct' ? currentAnswers.slice(1, 2) : [];
-                          const nextAnswers = [firstAnswer, ...remaining].filter(Boolean) as AnswerLetter[];
-                          void patchQuestion(currentQuestion.question_id, {
-                            correct_option_letters: nextAnswers.join(','),
-                            options:
-                              currentQuestionType === 'multiple_correct'
-                                ? patchOptionsWithAnswers(currentOptions, nextAnswers)
-                                : patchOptionsWithAnswer(currentOptions, firstAnswer),
-                          });
-                        }}
-                      >
-                        <option value="">Select</option>
-                        {ANSWER_CHOICES.map(choice => (
-                          <option value={choice} key={`${currentQuestion.question_id}-${choice}-primary`}>
-                            {choice}
-                          </option>
-                        ))}
-                      </select>
-                      <label className="easy-inline-check">
+                    <div className="easy-option-block" key={`${currentQuestion.question_id}-${option.letter}`}>
+                      <label className="easy-option-row">
                         <input
+                          className="easy-option-check"
                           type="checkbox"
-                          checked={currentQuestionType === 'multiple_correct' || currentAnswers.length > 1}
-                          onChange={e => {
-                            if (!e.target.checked) {
-                              const nextAnswers = currentAnswers.slice(0, 1);
-                              void patchQuestion(currentQuestion.question_id, {
-                                questionType: currentQuestionType === 'multiple_correct' ? 'single_correct' : currentQuestionType,
-                                question_type: currentQuestionType === 'multiple_correct' ? 'single_correct' : currentQuestionType,
-                                correct_option_letters: nextAnswers.join(','),
-                                options: patchOptionsWithAnswers(currentOptions, nextAnswers as AnswerLetter[]),
-                              });
-                              return;
-                            }
-                            const seed = (currentAnswers[0] || currentAnswer || 'A') as AnswerLetter;
-                            const second = currentAnswers[1] && currentAnswers[1] !== seed
-                              ? currentAnswers[1]
-                              : (ANSWER_CHOICES.find(choice => choice !== seed) || 'B');
-                            const nextAnswers = [seed, second] as AnswerLetter[];
+                          checked={Boolean(option.is_correct)}
+                          onChange={() => {
+                            const choice = normalizeOptionLetter(option.letter) as AnswerLetter;
+                            const nextAnswers = option.is_correct
+                              ? currentAnswers.filter(answer => answer !== choice)
+                              : (Array.from(new Set([...currentAnswers, choice])) as AnswerLetter[]);
+                            const inferredType = nextAnswers.length > 1 ? 'multiple_correct' : 'single_correct';
                             void patchQuestion(currentQuestion.question_id, {
-                              questionType: 'multiple_correct',
-                              question_type: 'multiple_correct',
                               correct_option_letters: nextAnswers.join(','),
+                              questionType: inferredType,
+                              question_type: inferredType,
                               options: patchOptionsWithAnswers(currentOptions, nextAnswers),
                             });
                           }}
                         />
-                        <span>Multiple correct</span>
-                      </label>
-                      {currentQuestionType === 'multiple_correct' || currentAnswers.length > 1 ? (
-                        <select
-                          value={currentAnswers[1] || ''}
-                          onChange={e => {
-                            const first = (currentAnswers[0] || currentAnswer || '') as AnswerLetter;
-                            const second = e.target.value.toUpperCase() as AnswerLetter;
-                            const nextAnswers = Array.from(new Set([first, second].filter(Boolean))) as AnswerLetter[];
-                            void patchQuestion(currentQuestion.question_id, {
-                              questionType: 'multiple_correct',
-                              question_type: 'multiple_correct',
-                              correct_option_letters: nextAnswers.join(','),
-                              options: patchOptionsWithAnswers(currentOptions, nextAnswers),
-                            });
+                        <span>{normalizeOptionLetter(option.letter)}</span>
+                        <input
+                          type="text"
+                          defaultValue={option.text}
+                          placeholder={`Option ${normalizeOptionLetter(option.letter)}`}
+                          onBlur={e => {
+                            const nextOptions = currentOptions.map(item =>
+                              item.letter === option.letter ? { ...item, text: e.target.value } : item
+                            );
+                            void patchQuestion(currentQuestion.question_id, { options: nextOptions });
                           }}
-                        >
-                          <option value="">Select second answer</option>
-                          {ANSWER_CHOICES.map(choice => (
-                            <option value={choice} key={`${currentQuestion.question_id}-${choice}-secondary`}>
-                              {choice}
-                            </option>
+                        />
+                      </label>
+                      {toImageList(option.image_urls || option.image_url).length > 0 ? (
+                        <div className="easy-inline-gallery easy-inline-gallery--compact">
+                          {toImageList(option.image_urls || option.image_url).map(image => (
+                            <figure key={`${currentQuestion.question_id}-${option.letter}-${image}`}>
+                              <button
+                                type="button"
+                                className="easy-zoom-frame"
+                                onClick={() => openZoom(image, `Option ${normalizeOptionLetter(option.letter)} image`)}
+                              >
+                                <img src={assetUrl(image)} alt={`option ${normalizeOptionLetter(option.letter)}`} />
+                              </button>
+                              <figcaption>Option {normalizeOptionLetter(option.letter)} image. Click to zoom.</figcaption>
+                            </figure>
                           ))}
-                        </select>
+                        </div>
                       ) : null}
                     </div>
-                  </label>
-                  <div className="easy-saving-indicator">
-                    {savingQuestionId === currentQuestion.question_id ? 'Saving...' : 'Changes auto-save'}
-                  </div>
+                  ))}
                 </div>
 
-                <div className="easy-card-actions">
-                  <button
-                    className="easy-btn primary"
-                    type="button"
-                    disabled={reviewIndex >= reviewQueue.length - 1}
-                    onClick={() => saveAndNextCurrentQuestion()}
-                  >
-                    Save and next
-                  </button>
-                  <button
-                    className="easy-btn subtle"
-                    type="button"
-                    disabled={commitBusy}
-                    onClick={() => void commitCurrentQuestion(currentQuestion)}
-                  >
-                    {commitBusy ? 'Committing...' : `Commit Q${currentQuestionNumber}`}
-                  </button>
-                  <button
-                    className="easy-btn secondary"
-                    type="button"
-                    disabled={reviewIndex >= reviewQueue.length - 1}
-                    onClick={() => goToNextQuestionToFix()}
-                  >
-                    Next question to fix
-                  </button>
-                </div>
+                <label className="easy-focus-field">
+                  <span>Explanation</span>
+                  <textarea
+                    className="easy-question-text"
+                    defaultValue={currentExplanation}
+                    placeholder="Add explanation"
+                    onBlur={e => {
+                      const nextText = e.target.value;
+                      if (!currentQuestion || nextText === currentExplanation) return;
+                      void patchQuestion(currentQuestion.question_id, {
+                        explanation: nextText,
+                        explanation_text: nextText,
+                      });
+                    }}
+                  />
+                </label>
+
+                <p className="easy-muted">Add an explanation image from the page rail, or choose upload there.</p>
+
+                {currentExplanationImages.length > 0 ? (
+                  <div className="easy-inline-gallery">
+                    {currentExplanationImages.map(image => (
+                      <figure key={`${currentQuestion.question_id}-explanation-${image}`}>
+                        <button type="button" className="easy-zoom-frame" onClick={() => openZoom(image, 'Explanation image')}>
+                          <img src={assetUrl(image)} alt="explanation" />
+                        </button>
+                        <figcaption>Explanation image. Click to zoom.</figcaption>
+                      </figure>
+                    ))}
+                  </div>
+                ) : null}
 
                 <div className="easy-quick-details">
                   <label className="easy-detail-field">
@@ -1494,20 +1444,9 @@ const EasyModeScreen: React.FC = () => {
                     <select
                       value={currentQuestionType}
                       onChange={e => {
-                        const nextType = e.target.value;
-                        const patch: Record<string, unknown> = {
-                          questionType: nextType,
-                          question_type: nextType,
-                        };
-                        if (nextType === 'single_correct') {
-                          const primary = currentAnswers[0] || currentAnswer || '';
-                          if (primary) {
-                            patch.correct_option_letters = primary;
-                            patch.options = patchOptionsWithAnswer(currentOptions, primary);
-                          }
-                        }
                         void patchQuestion(currentQuestion.question_id, {
-                          ...patch,
+                          questionType: e.target.value,
+                          question_type: e.target.value,
                         });
                       }}
                     >
@@ -1559,95 +1498,42 @@ const EasyModeScreen: React.FC = () => {
                   </label>
                 </div>
 
-                <div className="easy-option-image-grid">
-                  {currentOptions.map(option => (
-                    <label key={`${currentQuestion.question_id}-${option.letter}-image`} className="easy-asset-btn">
-                      <span>Upload image for {normalizeOptionLetter(option.letter)}</span>
-                      <input
-                        type="file"
-                        accept="image/*"
-                        onChange={async e => {
-                          const file = e.target.files?.[0];
-                          if (!file || !currentQuestion) return;
-                          const uploaded = await uploadAsset(file);
-                          if (!uploaded) return;
-                          const nextOptions = currentOptions.map(item =>
-                            item.letter === option.letter
-                              ? {
-                                  ...item,
-                                  image_url: uploaded,
-                                  image_urls: Array.from(new Set([...(item.image_urls || []), uploaded])),
-                                }
-                              : item
-                          );
-                          await patchQuestion(currentQuestion.question_id, { options: nextOptions });
-                          e.currentTarget.value = '';
-                        }}
-                      />
-                    </label>
-                  ))}
-                </div>
-
-                <div className="easy-inline-gallery">
-                  {currentOptions.flatMap(option =>
-                    toImageList(option.image_urls || option.image_url).map(image => (
-                      <figure key={`${currentQuestion.question_id}-${option.letter}-${image}`}>
-                        <img src={assetUrl(image)} alt={`option ${normalizeOptionLetter(option.letter)}`} />
-                        <figcaption>Option {normalizeOptionLetter(option.letter)}</figcaption>
-                      </figure>
-                    ))
-                  )}
-                </div>
-
-                <label className="easy-focus-field">
-                  <span>Explanation</span>
-                  <textarea
-                    className="easy-question-text"
-                    defaultValue={currentExplanation}
-                    placeholder="Add explanation"
-                    onBlur={e => {
-                      const nextText = e.target.value;
-                      if (!currentQuestion || nextText === currentExplanation) return;
-                      void patchQuestion(currentQuestion.question_id, {
-                        explanation: nextText,
-                        explanation_text: nextText,
-                      });
-                    }}
-                  />
-                </label>
-
-                <div className="easy-asset-toolbar">
-                  <label className="easy-asset-btn">
-                    <span>Upload explanation image</span>
-                    <input
-                      type="file"
-                      accept="image/*"
-                      onChange={async e => {
-                        const file = e.target.files?.[0];
-                        if (!file || !currentQuestion) return;
-                        const uploaded = await uploadAsset(file);
-                        if (!uploaded) return;
-                        const nextImages = Array.from(new Set([...(currentExplanationImages || []), uploaded]));
-                        await patchQuestion(currentQuestion.question_id, {
-                          explanation_image: uploaded,
-                          explanation_images: nextImages,
-                        });
-                        e.currentTarget.value = '';
-                      }}
-                    />
-                  </label>
-                </div>
-
-                {currentExplanationImages.length > 0 ? (
-                  <div className="easy-inline-gallery">
-                    {currentExplanationImages.map(image => (
-                      <figure key={`${currentQuestion.question_id}-explanation-${image}`}>
-                        <img src={assetUrl(image)} alt="explanation" />
-                        <figcaption>Explanation image</figcaption>
-                      </figure>
-                    ))}
+                <div className="easy-question-footer">
+                  <div className="easy-answer-pick">
+                    <span>Answer selection</span>
+                    <p className="easy-answer-help">Tick every option that should be treated as correct.</p>
                   </div>
-                ) : null}
+                  <div className="easy-saving-indicator">
+                    {savingQuestionId === currentQuestion.question_id ? 'Saving...' : 'Changes auto-save'}
+                  </div>
+                </div>
+
+                <div className="easy-card-actions">
+                  <button
+                    className="easy-btn primary"
+                    type="button"
+                    disabled={reviewIndex >= reviewQueue.length - 1}
+                    onClick={() => saveAndNextCurrentQuestion()}
+                  >
+                    Save and next
+                  </button>
+                  <button
+                    className="easy-btn subtle"
+                    type="button"
+                    disabled={commitBusy}
+                    onClick={() => void commitCurrentQuestion(currentQuestion)}
+                  >
+                    {commitBusy ? 'Committing...' : `Commit Q${currentQuestionNumber}`}
+                  </button>
+                  <button
+                    className="easy-btn secondary"
+                    type="button"
+                    disabled={reviewIndex >= reviewQueue.length - 1}
+                    onClick={() => goToNextQuestionToFix()}
+                  >
+                    Next question to fix
+                  </button>
+                </div>
                   </div>
 
                 {currentPageAssets.length > 0 ? (
@@ -1659,24 +1545,24 @@ const EasyModeScreen: React.FC = () => {
                   <div className="easy-diagram-strip">
                     {currentPageAssets.map(asset => (
                       <figure key={`${currentQuestion.question_id}-${asset.key}`}>
-                        <img src={assetUrl(asset.filename)} alt={asset.filename} />
+                        <button
+                          type="button"
+                          className="easy-zoom-frame"
+                          onClick={() => openZoom(asset.filename, asset.type || `Page ${currentQuestion.source_page} image`)}
+                        >
+                          <img src={assetUrl(asset.filename)} alt={asset.filename} />
+                        </button>
                         <figcaption>{asset.type || `Page ${currentQuestion.source_page}`}</figcaption>
                         <div className="easy-page-attach-actions">
                           <button
                             type="button"
-                            onClick={() => void patchQuestion(currentQuestion.question_id, {
-                              image_url: asset.filename,
-                              image_urls: Array.from(new Set([...(currentQuestionImages || []), asset.filename])),
-                            })}
+                            onClick={() => setImageChoice({ filename: asset.filename, target: 'question' })}
                           >
                             Use for question
                           </button>
                           <button
                             type="button"
-                            onClick={() => void patchQuestion(currentQuestion.question_id, {
-                              explanation_image: asset.filename,
-                              explanation_images: Array.from(new Set([...(currentExplanationImages || []), asset.filename])),
-                            })}
+                            onClick={() => setImageChoice({ filename: asset.filename, target: 'explanation' })}
                           >
                             Use for explanation
                           </button>
@@ -1684,18 +1570,7 @@ const EasyModeScreen: React.FC = () => {
                                 <button
                                   key={`${asset.filename}-${option.letter}`}
                                   type="button"
-                                  onClick={() => {
-                                    const nextOptions = currentOptions.map(item =>
-                                      item.letter === option.letter
-                                        ? {
-                                            ...item,
-                                            image_url: asset.filename,
-                                            image_urls: Array.from(new Set([...(item.image_urls || []), asset.filename])),
-                                          }
-                                        : item
-                                    );
-                                    void patchQuestion(currentQuestion.question_id, { options: nextOptions });
-                                  }}
+                                  onClick={() => setImageChoice({ filename: asset.filename, target: 'option', optionLetter: option.letter })}
                                 >
                                   Use for {normalizeOptionLetter(option.letter)}
                                 </button>
@@ -1768,6 +1643,63 @@ const EasyModeScreen: React.FC = () => {
 
         {uiNotice ? <div className="easy-banner notice">{uiNotice}</div> : null}
         {uiError ? <div className="easy-banner error">{uiError}</div> : null}
+
+        {zoomImage ? (
+          <div className="easy-lightbox" role="dialog" aria-modal="true" onClick={() => setZoomImage(null)}>
+            <div className="easy-lightbox-panel" onClick={e => e.stopPropagation()}>
+              <div className="easy-lightbox-head">
+                <strong>{zoomImage.label}</strong>
+                <button type="button" className="easy-btn subtle" onClick={() => setZoomImage(null)}>
+                  Close
+                </button>
+              </div>
+              <div className="easy-lightbox-image-wrap">
+                <img src={zoomImage.src} alt={zoomImage.label} className="easy-lightbox-image" />
+              </div>
+            </div>
+          </div>
+        ) : null}
+
+        {imageChoice && currentQuestion ? (
+          <div className="easy-lightbox" role="dialog" aria-modal="true" onClick={() => setImageChoice(null)}>
+            <div className="easy-lightbox-panel easy-lightbox-panel--choice" onClick={e => e.stopPropagation()}>
+              <div className="easy-lightbox-head">
+                <strong>
+                  {imageChoice.target === 'question'
+                    ? 'Add image to question'
+                    : imageChoice.target === 'explanation'
+                    ? 'Add image to explanation'
+                    : `Add image to option ${normalizeOptionLetter(imageChoice.optionLetter || '')}`}
+                </strong>
+                <button type="button" className="easy-btn subtle" onClick={() => setImageChoice(null)}>
+                  Cancel
+                </button>
+              </div>
+              <div className="easy-choice-actions">
+                <button
+                  type="button"
+                  className="easy-btn primary"
+                  onClick={() => void attachImageToTarget(currentQuestion, imageChoice.filename, imageChoice.target, imageChoice.optionLetter).then(() => setImageChoice(null))}
+                >
+                  Use this page image
+                </button>
+                <label className="easy-asset-btn easy-asset-btn--wide">
+                  <span>Upload your own image instead</span>
+                  <input
+                    type="file"
+                    accept="image/*"
+                    onChange={async e => {
+                      const file = e.target.files?.[0];
+                      if (!file) return;
+                      await uploadOwnImageForChoice(file);
+                      e.currentTarget.value = '';
+                    }}
+                  />
+                </label>
+              </div>
+            </div>
+          </div>
+        ) : null}
 
         <div className="easy-mobile-bar">
           <button

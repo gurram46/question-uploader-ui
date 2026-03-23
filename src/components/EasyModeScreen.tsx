@@ -363,7 +363,6 @@ const EasyModeScreen: React.FC = () => {
   const [showMetadataPanel, setShowMetadataPanel] = useState(true);
   const [showAnswerKeyPanel, setShowAnswerKeyPanel] = useState(true);
   const [zoomImage, setZoomImage] = useState<{ src: string; label: string } | null>(null);
-  const [imageChoice, setImageChoice] = useState<{ filename: string; target: 'question' | 'explanation' | 'option'; optionLetter?: string } | null>(null);
   const [nowTs, setNowTs] = useState(Date.now());
   const [parseStartedAt, setParseStartedAt] = useState<number | null>(null);
   const [parseSeconds, setParseSeconds] = useState<number | null>(null);
@@ -551,14 +550,6 @@ const EasyModeScreen: React.FC = () => {
         : item
     );
     await patchQuestion(question.question_id, { options: nextOptions });
-  }
-
-  async function uploadOwnImageForChoice(file: File) {
-    if (!currentQuestion || !imageChoice) return;
-    const uploaded = await uploadAsset(file);
-    if (!uploaded) return;
-    await attachImageToTarget(currentQuestion, uploaded, imageChoice.target, imageChoice.optionLetter);
-    setImageChoice(null);
   }
 
   async function uploadSourceBatch() {
@@ -1336,7 +1327,6 @@ const EasyModeScreen: React.FC = () => {
 
                 <div className="easy-focus-field">
                   <span>Question image</span>
-                  <p className="easy-muted">Use the page-image rail to attach this page image, or choose to upload your own.</p>
                   {currentQuestionImages.length > 0 ? (
                     <div className="easy-inline-gallery">
                       {currentQuestionImages.map(image => (
@@ -1422,8 +1412,6 @@ const EasyModeScreen: React.FC = () => {
                     }}
                   />
                 </label>
-
-                <p className="easy-muted">Add an explanation image from the page rail, or choose upload there.</p>
 
                 {currentExplanationImages.length > 0 ? (
                   <div className="easy-inline-gallery">
@@ -1536,12 +1524,12 @@ const EasyModeScreen: React.FC = () => {
                 </div>
                   </div>
 
-                {currentPageAssets.length > 0 ? (
-                  <aside className="easy-page-assets-rail">
+                <aside className="easy-page-assets-rail">
                     <div className="easy-rail-head">
                       <strong>Images from this page</strong>
-                      <span>Reference images for this question's source page.</span>
+                      <span>{currentPageAssets.length > 0 ? "Reference images for this question's source page." : 'No page images found on this page.'}</span>
                     </div>
+                  {currentPageAssets.length > 0 ? (
                   <div className="easy-diagram-strip">
                     {currentPageAssets.map(asset => (
                       <figure key={`${currentQuestion.question_id}-${asset.key}`}>
@@ -1556,13 +1544,13 @@ const EasyModeScreen: React.FC = () => {
                         <div className="easy-page-attach-actions">
                           <button
                             type="button"
-                            onClick={() => setImageChoice({ filename: asset.filename, target: 'question' })}
+                            onClick={() => void attachImageToTarget(currentQuestion, asset.filename, 'question')}
                           >
                             Use for question
                           </button>
                           <button
                             type="button"
-                            onClick={() => setImageChoice({ filename: asset.filename, target: 'explanation' })}
+                            onClick={() => void attachImageToTarget(currentQuestion, asset.filename, 'explanation')}
                           >
                             Use for explanation
                           </button>
@@ -1570,7 +1558,7 @@ const EasyModeScreen: React.FC = () => {
                                 <button
                                   key={`${asset.filename}-${option.letter}`}
                                   type="button"
-                                  onClick={() => setImageChoice({ filename: asset.filename, target: 'option', optionLetter: option.letter })}
+                                  onClick={() => void attachImageToTarget(currentQuestion, asset.filename, 'option', option.letter)}
                                 >
                                   Use for {normalizeOptionLetter(option.letter)}
                                 </button>
@@ -1579,8 +1567,64 @@ const EasyModeScreen: React.FC = () => {
                       </figure>
                     ))}
                   </div>
+                  ) : (
+                  <div className="easy-rail-upload-tools">
+                    <p>Upload your own</p>
+                    <div className="easy-page-attach-actions easy-page-attach-actions--upload">
+                      <label className="easy-asset-btn">
+                        <span>Question</span>
+                        <input
+                          type="file"
+                          accept="image/*"
+                          onChange={async e => {
+                            const file = e.target.files?.[0];
+                            if (!file) return;
+                            const uploaded = await uploadAsset(file);
+                            if (uploaded) {
+                              await attachImageToTarget(currentQuestion, uploaded, 'question');
+                            }
+                            e.currentTarget.value = '';
+                          }}
+                        />
+                      </label>
+                      <label className="easy-asset-btn">
+                        <span>Explanation</span>
+                        <input
+                          type="file"
+                          accept="image/*"
+                          onChange={async e => {
+                            const file = e.target.files?.[0];
+                            if (!file) return;
+                            const uploaded = await uploadAsset(file);
+                            if (uploaded) {
+                              await attachImageToTarget(currentQuestion, uploaded, 'explanation');
+                            }
+                            e.currentTarget.value = '';
+                          }}
+                        />
+                      </label>
+                      {currentOptions.map(option => (
+                        <label key={`upload-${option.letter}`} className="easy-asset-btn">
+                          <span>Option {normalizeOptionLetter(option.letter)}</span>
+                          <input
+                            type="file"
+                            accept="image/*"
+                            onChange={async e => {
+                              const file = e.target.files?.[0];
+                              if (!file) return;
+                              const uploaded = await uploadAsset(file);
+                              if (uploaded) {
+                                await attachImageToTarget(currentQuestion, uploaded, 'option', option.letter);
+                              }
+                              e.currentTarget.value = '';
+                            }}
+                          />
+                        </label>
+                      ))}
+                    </div>
+                  </div>
+                  )}
                   </aside>
-                ) : null}
                 </div>
               </div>
             ) : (
@@ -1655,47 +1699,6 @@ const EasyModeScreen: React.FC = () => {
               </div>
               <div className="easy-lightbox-image-wrap">
                 <img src={zoomImage.src} alt={zoomImage.label} className="easy-lightbox-image" />
-              </div>
-            </div>
-          </div>
-        ) : null}
-
-        {imageChoice && currentQuestion ? (
-          <div className="easy-lightbox" role="dialog" aria-modal="true" onClick={() => setImageChoice(null)}>
-            <div className="easy-lightbox-panel easy-lightbox-panel--choice" onClick={e => e.stopPropagation()}>
-              <div className="easy-lightbox-head">
-                <strong>
-                  {imageChoice.target === 'question'
-                    ? 'Add image to question'
-                    : imageChoice.target === 'explanation'
-                    ? 'Add image to explanation'
-                    : `Add image to option ${normalizeOptionLetter(imageChoice.optionLetter || '')}`}
-                </strong>
-                <button type="button" className="easy-btn subtle" onClick={() => setImageChoice(null)}>
-                  Cancel
-                </button>
-              </div>
-              <div className="easy-choice-actions">
-                <button
-                  type="button"
-                  className="easy-btn primary"
-                  onClick={() => void attachImageToTarget(currentQuestion, imageChoice.filename, imageChoice.target, imageChoice.optionLetter).then(() => setImageChoice(null))}
-                >
-                  Use this page image
-                </button>
-                <label className="easy-asset-btn easy-asset-btn--wide">
-                  <span>Upload your own image instead</span>
-                  <input
-                    type="file"
-                    accept="image/*"
-                    onChange={async e => {
-                      const file = e.target.files?.[0];
-                      if (!file) return;
-                      await uploadOwnImageForChoice(file);
-                      e.currentTarget.value = '';
-                    }}
-                  />
-                </label>
               </div>
             </div>
           </div>

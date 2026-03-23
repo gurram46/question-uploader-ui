@@ -373,112 +373,27 @@ function App() {
               <section className="workflow-hero">
                 <div className="workflow-hero-copy">
                   <p className="workflow-eyebrow">Choose a workflow</p>
-                  <h2 className="workflow-title">Start with the simplest path that still gets the job done</h2>
+                  <h2 className="workflow-title">Start with Easy Mode</h2>
                   <p className="workflow-copy">
-                    Most operators should start with Easy Mode. Use the heavier screens only when you need more review control,
-                    batch debugging, or manual cleanup.
+                    Most people should use Easy Mode. Only open the other screens when you need manual entry or deeper review.
                   </p>
                   <div className="workflow-hero-pills">
-                    <span>Fastest for daily work</span>
-                    <span>Less confusion on screen</span>
-                    <span>Full tools still available</span>
+                    <span>Fastest</span>
+                    <span>Easiest</span>
+                    <span>Recommended</span>
                   </div>
                 </div>
                 <div className="workflow-highlight">
-                  <span>Recommended first stop</span>
+                  <span>Recommended</span>
                   <strong>Easy Mode</strong>
-                  <p>Upload, review the answer key, fix flagged items, add metadata, and commit in the shortest path.</p>
+                  <p>Upload a batch, review the answer key, fix questions, and save to the database.</p>
                   <button onClick={() => setCurrentView('easyMode')} className="workflow-btn primary">
                     Open Easy Mode
                   </button>
                 </div>
               </section>
 
-              <section className="workflow-decision-strip">
-                <div className="workflow-decision-card">
-                  <span>Need speed?</span>
-                  <strong>Choose Easy Mode</strong>
-                  <p>Best when the goal is to finish batches quickly with fewer decisions.</p>
-                </div>
-                <div className="workflow-decision-card">
-                  <span>Need control?</span>
-                  <strong>Choose AI Automation</strong>
-                  <p>Best for deep cleanup, debugging extraction, and advanced review work.</p>
-                </div>
-                <div className="workflow-decision-card">
-                  <span>Need a middle ground?</span>
-                  <strong>Choose AI Simplified</strong>
-                  <p>Best when Easy Mode is too light but AI Automation feels too dense.</p>
-                </div>
-              </section>
-
               <section className="workflow-grid">
-                <article className="workflow-card">
-                  <div className="workflow-card-top">
-                    <p className="workflow-card-label">Manual</p>
-                    <h3>Manual Entry</h3>
-                  </div>
-                  <div className="workflow-card-meta">
-                    <span>Slowest</span>
-                    <span>Most manual</span>
-                  </div>
-                  <p className="workflow-card-copy">
-                    Best when you already know the question data and want to enter it carefully by hand.
-                  </p>
-                  <ul className="workflow-card-points">
-                    <li>Full manual control</li>
-                    <li>Best for one-off questions</li>
-                    <li>Slowest workflow</li>
-                  </ul>
-                  <button onClick={() => setCurrentView('upload')} className="workflow-btn secondary">
-                    Start Manual Entry
-                  </button>
-                </article>
-
-                <article className="workflow-card">
-                  <div className="workflow-card-top">
-                    <p className="workflow-card-label">Advanced</p>
-                    <h3>AI Automation</h3>
-                  </div>
-                  <div className="workflow-card-meta">
-                    <span>Most powerful</span>
-                    <span>Dense UI</span>
-                  </div>
-                  <p className="workflow-card-copy">
-                    Best for power users who need the full review surface, batch controls, and deep cleanup tools.
-                  </p>
-                  <ul className="workflow-card-points">
-                    <li>Most powerful workflow</li>
-                    <li>Best for debugging extraction</li>
-                    <li>Dense interface</li>
-                  </ul>
-                  <button onClick={() => setCurrentView('ai')} className="workflow-btn secondary">
-                    Open AI Automation
-                  </button>
-                </article>
-
-                <article className="workflow-card">
-                  <div className="workflow-card-top">
-                    <p className="workflow-card-label">Bridge</p>
-                    <h3>AI Simplified Automation</h3>
-                  </div>
-                  <div className="workflow-card-meta">
-                    <span>Balanced</span>
-                    <span>Diagram aware</span>
-                  </div>
-                  <p className="workflow-card-copy">
-                    Best when you want a lighter automation workspace but still need more visible controls than Easy Mode.
-                  </p>
-                  <ul className="workflow-card-points">
-                    <li>Guided upload flow</li>
-                    <li>Answer-key review</li>
-                    <li>Diagram-aware editing</li>
-                  </ul>
-                  <button onClick={() => setCurrentView('aiSimplified')} className="workflow-btn secondary">
-                    Open AI Simplified
-                  </button>
-                </article>
-
                 <article className="workflow-card workflow-card--featured">
                   <div className="workflow-badge">Recommended</div>
                   <div className="workflow-card-top">
@@ -490,15 +405,44 @@ function App() {
                     <span>Least confusing</span>
                   </div>
                   <p className="workflow-card-copy">
-                    Best for operators who need the fastest guided flow with fewer decisions on screen.
+                    Best for day-to-day work when you want the shortest guided path.
                   </p>
-                  <ul className="workflow-card-points">
-                    <li>One flagged question at a time</li>
-                    <li>Top-first metadata</li>
-                    <li>Mobile-friendly workflow</li>
-                  </ul>
                   <button onClick={() => setCurrentView('easyMode')} className="workflow-btn primary">
                     Open Easy Mode
+                  </button>
+                </article>
+
+                <article className="workflow-card">
+                  <div className="workflow-card-top">
+                    <p className="workflow-card-label">Manual</p>
+                    <h3>Manual Entry</h3>
+                  </div>
+                  <div className="workflow-card-meta">
+                    <span>Manual</span>
+                    <span>One by one</span>
+                  </div>
+                  <p className="workflow-card-copy">
+                    Use this when you want to enter or correct a question by hand.
+                  </p>
+                  <button onClick={() => setCurrentView('upload')} className="workflow-btn secondary">
+                    Start Manual Entry
+                  </button>
+                </article>
+
+                <article className="workflow-card">
+                  <div className="workflow-card-top">
+                    <p className="workflow-card-label">Advanced</p>
+                    <h3>More Tools</h3>
+                  </div>
+                  <div className="workflow-card-meta">
+                    <span>Advanced review</span>
+                    <span>Power user</span>
+                  </div>
+                  <p className="workflow-card-copy">
+                    Use this only when Easy Mode is not enough and you need deeper review tools.
+                  </p>
+                  <button onClick={() => setCurrentView('ai')} className="workflow-btn secondary">
+                    Open AI Automation
                   </button>
                 </article>
               </section>

@@ -199,16 +199,6 @@ function App() {
                   Choose Mode
                 </button>
                 <button
-                  onClick={() => setCurrentView('upload')}
-                  className={`px-3 py-1.5 sm:px-4 sm:py-2 text-sm font-medium rounded-md transition-colors ${
-                    currentView === 'upload'
-                      ? 'bg-primary-100 text-primary-700 border border-primary-200'
-                      : 'text-gray-600 hover:text-gray-900 hover:bg-gray-100'
-                  }`}
-                >
-                  Manual Entry
-                </button>
-                <button
                   onClick={() => setCurrentView('list')}
                   className={`px-3 py-1.5 sm:px-4 sm:py-2 text-sm font-medium rounded-md transition-colors ${
                     currentView === 'list'
@@ -217,26 +207,6 @@ function App() {
                   }`}
                 >
                   View Questions
-                </button>
-                <button
-                  onClick={() => setCurrentView('ai')}
-                  className={`px-3 py-1.5 sm:px-4 sm:py-2 text-sm font-medium rounded-md transition-colors ${
-                    isAiView
-                      ? 'bg-primary-100 text-primary-700 border border-primary-200'
-                      : 'text-gray-600 hover:text-gray-900 hover:bg-gray-100'
-                  }`}
-                >
-                  AI Automation
-                </button>
-                <button
-                  onClick={() => setCurrentView('aiSimplified')}
-                  className={`px-3 py-1.5 sm:px-4 sm:py-2 text-sm font-medium rounded-md transition-colors ${
-                    currentView === 'aiSimplified'
-                      ? 'bg-primary-100 text-primary-700 border border-primary-200'
-                      : 'text-gray-600 hover:text-gray-900 hover:bg-gray-100'
-                  }`}
-                >
-                  AI Simplified
                 </button>
                 <button
                   onClick={() => setCurrentView('easyMode')}

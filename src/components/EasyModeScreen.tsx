@@ -519,6 +519,7 @@ const EasyModeScreen: React.FC = () => {
     maxQuestion: '1200',
   });
   const pollTimerRef = useRef<number | null>(null);
+  const autoAppliedMetadataRef = useRef(new Map<string, string>());
   const [metadataDraft, setMetadataDraft] = useState({
     subject: '',
     chapter: '',
@@ -617,6 +618,50 @@ const EasyModeScreen: React.FC = () => {
     }
   }
 
+  function buildMetadataPatchFromDraft() {
+    const patch: Record<string, unknown> = {};
+    if (metadataDraft.subject.trim()) patch.subject_name = metadataDraft.subject.trim();
+    if (metadataDraft.chapter.trim()) patch.chapter_name = metadataDraft.chapter.trim();
+    if (metadataDraft.topic.trim()) patch.topic_name = metadataDraft.topic.trim();
+    if (metadataDraft.examType.trim()) patch.exam_type = metadataDraft.examType.trim();
+    if (metadataDraft.publishedYear.trim()) patch.published_year = metadataDraft.publishedYear.trim();
+    return patch;
+  }
+
+  function metadataNeedsApplying(data: DraftResponse, patch: Record<string, unknown>) {
+    if (!Array.isArray(data.questions) || data.questions.length === 0) return false;
+    return data.questions.some(question => {
+      if (typeof patch.subject_name === 'string' && String(question.subject_name || '').trim() !== patch.subject_name) return true;
+      if (typeof patch.chapter_name === 'string' && String(question.chapter_name || '').trim() !== patch.chapter_name) return true;
+      if (typeof patch.topic_name === 'string' && String(question.topic_name || '').trim() !== patch.topic_name) return true;
+      if (typeof patch.exam_type === 'string' && String(question.exam_type || '').trim() !== patch.exam_type) return true;
+      if (patch.published_year !== undefined && String(question.published_year ?? '').trim() !== String(patch.published_year).trim()) return true;
+      return false;
+    });
+  }
+
+  async function applyMetadataPatchToBatch(batchId: string, patch: Record<string, unknown>, silent = false) {
+    const response = await apiFetch(`${PYTHON_API_BASE}/draft/${batchId}/bulk-update`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        ...authHeaders(),
+      },
+      body: JSON.stringify({ mode: 'all', patch }),
+    });
+    const data = (await response.json()) as { updated?: number; detail?: string };
+    if (!response.ok) {
+      if (!silent) {
+        setUiError(data.detail || 'Failed to apply metadata.');
+      }
+      return false;
+    }
+    if (!silent) {
+      setUiNotice(`Applied metadata to ${data.updated || 0} questions.`);
+    }
+    return true;
+  }
+
   async function loadDraft(batchId: string) {
     const response = await apiFetch(`${PYTHON_API_BASE}/draft/${batchId}?page=1&limit=200`, {
       headers: authHeaders(),
@@ -624,6 +669,30 @@ const EasyModeScreen: React.FC = () => {
     if (!response.ok) return;
     const data = (await response.json()) as DraftResponse;
     setDraft(data);
+
+    const metadataPatch = buildMetadataPatchFromDraft();
+    const metadataSignature = JSON.stringify(metadataPatch);
+    const shouldAutoApply =
+      Object.keys(metadataPatch).length > 0 &&
+      metadataNeedsApplying(data, metadataPatch) &&
+      autoAppliedMetadataRef.current.get(batchId) !== metadataSignature;
+
+    if (!shouldAutoApply) return;
+
+    autoAppliedMetadataRef.current.set(batchId, metadataSignature);
+    const applied = await applyMetadataPatchToBatch(batchId, metadataPatch, true);
+    if (!applied) {
+      autoAppliedMetadataRef.current.delete(batchId);
+      return;
+    }
+
+    const refreshed = await apiFetch(`${PYTHON_API_BASE}/draft/${batchId}?page=1&limit=200`, {
+      headers: authHeaders(),
+    });
+    if (!refreshed.ok) return;
+    const refreshedData = (await refreshed.json()) as DraftResponse;
+    setDraft(refreshedData);
+    setUiNotice('Applied your metadata to the loaded questions.');
   }
 
   async function pollJob(jobId: string, batchId: string) {
@@ -917,33 +986,20 @@ const EasyModeScreen: React.FC = () => {
 
   async function applyMetadataToAll() {
     if (!selectedBatchId) return;
-    const patch: Record<string, unknown> = {};
-    if (metadataDraft.subject.trim()) patch.subject_name = metadataDraft.subject.trim();
-    if (metadataDraft.chapter.trim()) patch.chapter_name = metadataDraft.chapter.trim();
-    if (metadataDraft.topic.trim()) patch.topic_name = metadataDraft.topic.trim();
-    if (metadataDraft.examType.trim()) patch.exam_type = metadataDraft.examType.trim();
-    if (metadataDraft.publishedYear.trim()) patch.published_year = metadataDraft.publishedYear.trim();
+    const patch = buildMetadataPatchFromDraft();
     if (Object.keys(patch).length === 0) {
       setUiError('Enter metadata before applying it to the batch.');
       return;
     }
     setMetadataSaving(true);
     setUiError('');
-    const response = await apiFetch(`${PYTHON_API_BASE}/draft/${selectedBatchId}/bulk-update`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        ...authHeaders(),
-      },
-      body: JSON.stringify({ mode: 'all', patch }),
-    });
-    const data = (await response.json()) as { updated?: number; detail?: string };
+    autoAppliedMetadataRef.current.set(selectedBatchId, JSON.stringify(patch));
+    const applied = await applyMetadataPatchToBatch(selectedBatchId, patch);
     setMetadataSaving(false);
-    if (!response.ok) {
-      setUiError(data.detail || 'Failed to apply metadata.');
+    if (!applied) {
+      autoAppliedMetadataRef.current.delete(selectedBatchId);
       return;
     }
-    setUiNotice(`Applied metadata to ${data.updated || 0} questions.`);
     await loadDraft(selectedBatchId);
   }
 

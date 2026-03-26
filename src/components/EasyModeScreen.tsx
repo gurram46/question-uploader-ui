@@ -1083,6 +1083,43 @@ const EasyModeScreen: React.FC = () => {
     setUiError(failed > 0 ? 'Question commit failed.' : 'No question was committed.');
   }
 
+  async function commitQuestionFromShowAll(question: DraftQuestion) {
+    await commitCurrentQuestion(question);
+  }
+
+  async function commitVisibleQuestionsAndNextPage() {
+    if (!selectedBatchId || !visibleReviewItems.length) return;
+    setCommitBusy(true);
+    setUiError('');
+    setCommitResult('');
+    const payload = buildBulkPayload(
+      selectedBatchId,
+      visibleReviewItems.map(item => item.question)
+    );
+    const response = await apiFetch(`${EXPRESS_API_BASE}/api/questions/bulk`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        ...authHeaders(),
+      },
+      body: JSON.stringify({ questions: payload, chunkSize: 5 }),
+    });
+    const data = (await response.json()) as CommitResponse;
+    setCommitBusy(false);
+    if (!response.ok) {
+      setUiError(data.detail || 'Page commit failed.');
+      return;
+    }
+    const inserted = data.insertedCount ?? data.inserted ?? 0;
+    const failed = data.failedCount ?? data.failed ?? 0;
+    setCommitResult(`Committed ${inserted} questions.${failed > 0 ? ` ${failed} failed.` : ''}`);
+    setUiNotice(`Committed ${inserted} questions from this page.`);
+    if (selectedBatchId) {
+      await loadDraft(selectedBatchId);
+    }
+    setShowAllPage(prev => Math.min(showAllPageCount - 1, prev + 1));
+  }
+
   function goToNextQuestionToFix() {
     setReviewIndex(prev => Math.min(reviewQueue.length - 1, prev + 1));
   }
@@ -1591,6 +1628,16 @@ const EasyModeScreen: React.FC = () => {
               ))}
             </select>
           </label>
+          <div className="easy-card-actions">
+            <button
+              className="easy-btn subtle"
+              type="button"
+              disabled={commitBusy}
+              onClick={() => void commitQuestionFromShowAll(question)}
+            >
+              {commitBusy ? 'Committing...' : `Commit Q${questionNumber}`}
+            </button>
+          </div>
         </div>
       </article>
     );
@@ -2385,6 +2432,14 @@ const EasyModeScreen: React.FC = () => {
                   </span>
                 </div>
                 <div className="easy-queue-actions">
+                  <button
+                    className="easy-btn primary"
+                    type="button"
+                    disabled={commitBusy || visibleReviewItems.length === 0}
+                    onClick={() => void commitVisibleQuestionsAndNextPage()}
+                  >
+                    {commitBusy ? 'Committing...' : 'Commit these 5 and next'}
+                  </button>
                   <button
                     className="easy-btn subtle"
                     type="button"

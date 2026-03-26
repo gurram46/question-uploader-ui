@@ -1828,7 +1828,7 @@ const EasyModeScreen: React.FC = () => {
                   </label>
                   <div className="easy-key-actions">
                     <button className="easy-btn primary" type="button" onClick={() => void parseAnswerKey()}>
-                      Read key
+                      Upload key
                     </button>
                     <button className="easy-btn secondary" type="button" onClick={() => void applyReviewedAnswers()} disabled={!reviewedPairs.length || !reviewConfirmed}>
                       Fill answers

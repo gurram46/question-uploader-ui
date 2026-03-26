@@ -114,6 +114,151 @@ const DIFFICULTY_TYPES = [
   'unknown',
 ];
 
+const MATH_COMMAND_MAP = new Map<string, string>([
+  ['alpha', 'α'],
+  ['beta', 'β'],
+  ['gamma', 'γ'],
+  ['delta', 'δ'],
+  ['theta', 'θ'],
+  ['lambda', 'λ'],
+  ['mu', 'μ'],
+  ['pi', 'π'],
+  ['sigma', 'σ'],
+  ['phi', 'φ'],
+  ['omega', 'ω'],
+  ['Alpha', 'Α'],
+  ['Beta', 'Β'],
+  ['Gamma', 'Γ'],
+  ['Delta', 'Δ'],
+  ['Theta', 'Θ'],
+  ['Lambda', 'Λ'],
+  ['Pi', 'Π'],
+  ['Sigma', 'Σ'],
+  ['Phi', 'Φ'],
+  ['Omega', 'Ω'],
+  ['sqrt', '√'],
+  ['times', '×'],
+  ['cdot', '·'],
+  ['div', '÷'],
+  ['pm', '±'],
+  ['mp', '∓'],
+  ['leq', '≤'],
+  ['geq', '≥'],
+  ['neq', '≠'],
+  ['approx', '≈'],
+  ['infty', '∞'],
+  ['degree', '°'],
+]);
+
+const SUPERSCRIPT_MAP = new Map<string, string>([
+  ['0', '⁰'],
+  ['1', '¹'],
+  ['2', '²'],
+  ['3', '³'],
+  ['4', '⁴'],
+  ['5', '⁵'],
+  ['6', '⁶'],
+  ['7', '⁷'],
+  ['8', '⁸'],
+  ['9', '⁹'],
+  ['+', '⁺'],
+  ['-', '⁻'],
+  ['=', '⁼'],
+  ['(', '⁽'],
+  [')', '⁾'],
+  ['n', 'ⁿ'],
+  ['i', 'ⁱ'],
+]);
+
+const SUBSCRIPT_MAP = new Map<string, string>([
+  ['0', '₀'],
+  ['1', '₁'],
+  ['2', '₂'],
+  ['3', '₃'],
+  ['4', '₄'],
+  ['5', '₅'],
+  ['6', '₆'],
+  ['7', '₇'],
+  ['8', '₈'],
+  ['9', '₉'],
+  ['+', '₊'],
+  ['-', '₋'],
+  ['=', '₌'],
+  ['(', '₍'],
+  [')', '₎'],
+  ['a', 'ₐ'],
+  ['e', 'ₑ'],
+  ['h', 'ₕ'],
+  ['i', 'ᵢ'],
+  ['j', 'ⱼ'],
+  ['k', 'ₖ'],
+  ['l', 'ₗ'],
+  ['m', 'ₘ'],
+  ['n', 'ₙ'],
+  ['o', 'ₒ'],
+  ['p', 'ₚ'],
+  ['r', 'ᵣ'],
+  ['s', 'ₛ'],
+  ['t', 'ₜ'],
+  ['u', 'ᵤ'],
+  ['v', 'ᵥ'],
+  ['x', 'ₓ'],
+]);
+
+function looksMathHeavy(text: string) {
+  return (
+    /(\\[a-zA-Z]+)|(\^\{[^}]+\})|(_\{[^}]+\})|([A-Za-z0-9]\^[A-Za-z0-9])|([A-Za-z0-9]_[A-Za-z0-9])/.test(text) ||
+    /[√∆ΔπθλμσαβγφωΠΣΩΘΛμ]/.test(text) ||
+    /[⁰¹²³⁴⁵⁶⁷⁸⁹⁺⁻⁼⁽⁾ⁿⁱ₀₁₂₃₄₅₆₇₈₉₊₋₌₍₎ₐₑₕᵢⱼₖₗₘₙₒₚᵣₛₜᵤᵥₓ]/.test(text) ||
+    /\b[A-Za-z]{1,4}[−-]?\d+\b/.test(text) ||
+    /\b(?:sin|cos|tan|cot|sec|cosec|log|ln)\s*\d+/i.test(text) ||
+    /[=±×÷≈≠≤≥∝∞∑∫∂]/.test(text)
+  );
+}
+
+function mapScript(content: string, mapping: Map<string, string>, fallbackPrefix: string) {
+  const converted = content
+    .split('')
+    .map(char => mapping.get(char) || '')
+    .join('');
+
+  return converted.length === content.length ? converted : `${fallbackPrefix}(${content})`;
+}
+
+function renderMathPreviewText(text: string) {
+  return text
+    .split(/\r?\n/)
+    .map(line =>
+      line
+        .replace(/\\frac\s*\{([^{}]+)\}\s*\{([^{}]+)\}/g, '($1)/($2)')
+        .replace(/\\sqrt\s*\{([^{}]+)\}/g, '√($1)')
+        .replace(/\^\{([^}]+)\}/g, (_, content: string) => mapScript(content, SUPERSCRIPT_MAP, '^'))
+        .replace(/_\{([^}]+)\}/g, (_, content: string) => mapScript(content, SUBSCRIPT_MAP, '_'))
+        .replace(/\^([A-Za-z0-9+\-=()])/g, (_, content: string) => mapScript(content, SUPERSCRIPT_MAP, '^'))
+        .replace(/_([A-Za-z0-9+\-=()])/g, (_, content: string) => mapScript(content, SUBSCRIPT_MAP, '_'))
+        .replace(/\\([A-Za-z]+)/g, (_, command: string) => MATH_COMMAND_MAP.get(command) || command)
+        .replace(/\\([{}])/g, '$1')
+        .replace(/\\,/g, ' ')
+        .replace(/~/g, ' ')
+        .replace(/\\left|\\right/g, '')
+        .replace(/[ \t]+/g, ' ')
+        .trimEnd()
+    )
+    .join('\n')
+    .trim();
+}
+
+function MathPreview({ text }: { text: string }) {
+  if (!looksMathHeavy(text)) return null;
+
+  return (
+    <div className="easy-math-preview" aria-label="Math preview">
+      <span className="easy-math-preview-label">Preview</span>
+      <div className="easy-math-preview-body">{renderMathPreviewText(text)}</div>
+    </div>
+  );
+}
+
 type CatalogRow = {
   subject_name?: string;
   subjectName?: string;
@@ -361,7 +506,6 @@ const EasyModeScreen: React.FC = () => {
   const [reviewIndex, setReviewIndex] = useState(Number(localStorage.getItem(REVIEW_INDEX_KEY) || '0'));
   const [showAllQuestions, setShowAllQuestions] = useState(false);
   const [showAllPage, setShowAllPage] = useState(0);
-  const [expandedShowAllImageId, setExpandedShowAllImageId] = useState('');
   const [showMetadataPanel, setShowMetadataPanel] = useState(true);
   const [showAnswerKeyPanel, setShowAnswerKeyPanel] = useState(true);
   const [zoomImage, setZoomImage] = useState<{ src: string; label: string } | null>(null);
@@ -1021,8 +1165,47 @@ const EasyModeScreen: React.FC = () => {
   }, [questions, reviewQueue.length]);
 
   const completedCount = Math.max(0, summary.total - summary.reviewNeeded);
+  const selectedBatchProgress = useMemo(() => {
+    const totalPages = Number(jobStatus?.total_pages || selectedBatch?.total_pages || 0);
+    const pagesDone = Number(jobStatus?.pages_done || selectedBatch?.pages_done || 0);
+    const explicitProgress = Number(jobStatus?.progress ?? selectedBatch?.progress ?? NaN);
+
+    const percent = Number.isFinite(explicitProgress)
+      ? Math.max(0, Math.min(100, explicitProgress))
+      : totalPages > 0
+        ? Math.max(0, Math.min(100, Math.round((pagesDone / totalPages) * 100)))
+        : selectedBatch?.status === 'done'
+          ? 100
+          : 0;
+
+    const status =
+      jobStatus?.status ||
+      selectedBatch?.status ||
+      (percent >= 100 ? 'done' : 'waiting');
+
+    const message =
+      status === 'done'
+        ? 'Batch is ready'
+        : status === 'queued'
+          ? 'Waiting to start'
+          : status === 'running'
+            ? 'Reading questions'
+            : 'Batch progress';
+
+    return {
+      percent,
+      status,
+      message,
+      pagesDone,
+      totalPages,
+    };
+  }, [jobStatus?.pages_done, jobStatus?.progress, jobStatus?.status, jobStatus?.total_pages, selectedBatch?.pages_done, selectedBatch?.progress, selectedBatch?.status, selectedBatch?.total_pages]);
+
   const missingQuestionNumbers = useMemo(() => {
-    const expectedTotal = Math.max(0, summary.total);
+    const expectedTotal = Math.max(
+      0,
+      Number(selectedBatch?.total_questions || 0) || Number(jobStatus?.total_questions || 0) || summary.total
+    );
     if (expectedTotal === 0) return [];
 
     const numbers = questions
@@ -1038,7 +1221,7 @@ const EasyModeScreen: React.FC = () => {
     }
 
     return missing;
-  }, [questions, summary.total]);
+  }, [jobStatus?.total_questions, questions, selectedBatch?.total_questions, summary.total]);
 
   const parseElapsed = parseStartedAt ? Math.floor((nowTs - parseStartedAt) / 1000) : null;
   const showAllPageSize = 5;
@@ -1092,7 +1275,7 @@ const EasyModeScreen: React.FC = () => {
     const questionImages = toImageList(question.image_urls || question.image_url);
     const explanationImages = toImageList(question.explanation_images || question.explanation_image);
     const pageAssets = assetEntries.filter(asset => asset.source_page === question.source_page);
-    const showImages = expandedShowAllImageId === question.question_id;
+    const firstPageAsset = pageAssets[0] || null;
 
     return (
       <article key={question.question_id} className="easy-batch-question-card">
@@ -1108,15 +1291,6 @@ const EasyModeScreen: React.FC = () => {
               ))}
             </div>
             <div className="easy-batch-question-actions">
-              <button
-                className="easy-btn subtle"
-                type="button"
-                onClick={() =>
-                  setExpandedShowAllImageId(prev => (prev === question.question_id ? '' : question.question_id))
-                }
-              >
-                {showImages ? 'Hide images' : 'Images'}
-              </button>
               <button
                 className="easy-btn subtle"
                 type="button"
@@ -1144,6 +1318,7 @@ const EasyModeScreen: React.FC = () => {
               }
             }}
           />
+          <MathPreview text={normalizeQuestionText(question)} />
         </label>
 
         <div className="easy-option-list">
@@ -1175,134 +1350,127 @@ const EasyModeScreen: React.FC = () => {
                   }}
                 />
               </label>
+              <MathPreview text={option.text} />
             </div>
           ))}
         </div>
 
-        {showImages ? (
-          <div className="easy-batch-image-panel">
-            <div className="easy-batch-image-column">
+        <div className="easy-batch-image-panel easy-batch-image-panel--compact">
+          <div className="easy-batch-image-column">
+            <div className="easy-rail-head">
+              <strong>Image status</strong>
+              <span>Keep this short. Use focus mode only if image work gets messy.</span>
+            </div>
+            <div className="easy-page-attach-actions easy-page-attach-actions--status">
               {questionImages.length > 0 ? (
-                <div className="easy-inline-gallery easy-inline-gallery--compact">
-                  {questionImages.map(image => (
-                    <figure key={`${question.question_id}-showall-question-${image}`}>
-                      <button type="button" className="easy-zoom-frame" onClick={() => openZoom(image, 'Question image')}>
-                        <img src={assetUrl(image)} alt="question" />
-                      </button>
-                      <figcaption>Question image</figcaption>
-                      <button type="button" className="easy-inline-remove" onClick={() => void removeImageFromTarget(question, image, 'question')}>
-                        Remove image
-                      </button>
-                    </figure>
-                  ))}
-                </div>
-              ) : null}
-
+                questionImages.map(image => (
+                  <button key={`${question.question_id}-question-${image}`} type="button" onClick={() => openZoom(image, 'Question image')}>
+                    Question image
+                  </button>
+                ))
+              ) : (
+                <span className="easy-inline-note">No question image</span>
+              )}
               {explanationImages.length > 0 ? (
-                <div className="easy-inline-gallery easy-inline-gallery--compact">
-                  {explanationImages.map(image => (
-                    <figure key={`${question.question_id}-showall-explanation-${image}`}>
-                      <button type="button" className="easy-zoom-frame" onClick={() => openZoom(image, 'Explanation image')}>
-                        <img src={assetUrl(image)} alt="explanation" />
-                      </button>
-                      <figcaption>Explanation image</figcaption>
-                      <button type="button" className="easy-inline-remove" onClick={() => void removeImageFromTarget(question, image, 'explanation')}>
-                        Remove image
-                      </button>
-                    </figure>
-                  ))}
-                </div>
-              ) : null}
+                explanationImages.map(image => (
+                  <button key={`${question.question_id}-explanation-${image}`} type="button" onClick={() => openZoom(image, 'Explanation image')}>
+                    Explanation image
+                  </button>
+                ))
+              ) : (
+                <span className="easy-inline-note">No explanation image</span>
+              )}
+            </div>
+          </div>
+
+          <aside className="easy-batch-image-rail easy-batch-image-rail--compact">
+            <div className="easy-rail-head">
+              <strong>{firstPageAsset ? 'Page image' : 'No page image found'}</strong>
+              <span>{firstPageAsset ? 'Use this if it matches. If not, upload your own below.' : 'Upload your own image for this question.'}</span>
             </div>
 
-            <aside className="easy-batch-image-rail">
-              <div className="easy-rail-head">
-                <strong>Images for this question</strong>
-                <span>{pageAssets.length > 0 ? 'Use the page image if it matches, or upload your own.' : 'No page image found. Upload your own.'}</span>
-              </div>
-
-              {pageAssets.length > 0 ? (
-                <div className="easy-diagram-strip">
-                  {pageAssets.map(asset => (
-                    <figure key={`${question.question_id}-showall-page-${asset.key}`}>
-                      <button type="button" className="easy-zoom-frame" onClick={() => openZoom(asset.filename, asset.type || `Page ${question.source_page} image`)}>
-                        <img src={assetUrl(asset.filename)} alt={asset.filename} />
-                      </button>
-                      <figcaption>{asset.type || `Page ${question.source_page}`}</figcaption>
-                      <div className="easy-page-attach-actions">
-                        <button type="button" onClick={() => void attachImageToTarget(question, asset.filename, 'question')}>
-                          Use for question
-                        </button>
-                        <button type="button" onClick={() => void attachImageToTarget(question, asset.filename, 'explanation')}>
-                          Use for explanation
-                        </button>
-                        {options.map(option => (
-                          <button
-                            key={`${question.question_id}-${asset.filename}-${option.letter}`}
-                            type="button"
-                            onClick={() => void attachImageToTarget(question, asset.filename, 'option', option.letter)}
-                          >
-                            Use for {normalizeOptionLetter(option.letter)}
-                          </button>
-                        ))}
-                      </div>
-                    </figure>
-                  ))}
-                </div>
-              ) : null}
-
-              <div className="easy-rail-upload-tools">
-                <p>Upload your own</p>
-                <div className="easy-page-attach-actions easy-page-attach-actions--upload">
-                  <label className="easy-asset-btn">
-                    <span>Question</span>
-                    <input
-                      type="file"
-                      accept="image/*"
-                      onChange={async e => {
-                        const file = e.target.files?.[0];
-                        if (!file) return;
-                        const uploaded = await uploadAsset(file);
-                        if (uploaded) await attachImageToTarget(question, uploaded, 'question');
-                        e.currentTarget.value = '';
-                      }}
-                    />
-                  </label>
-                  <label className="easy-asset-btn">
-                    <span>Explanation</span>
-                    <input
-                      type="file"
-                      accept="image/*"
-                      onChange={async e => {
-                        const file = e.target.files?.[0];
-                        if (!file) return;
-                        const uploaded = await uploadAsset(file);
-                        if (uploaded) await attachImageToTarget(question, uploaded, 'explanation');
-                        e.currentTarget.value = '';
-                      }}
-                    />
-                  </label>
+            {firstPageAsset ? (
+              <>
+                <figure className="easy-compact-image-card">
+                  <button
+                    type="button"
+                    className="easy-zoom-frame"
+                    onClick={() => openZoom(firstPageAsset.filename, firstPageAsset.type || `Page ${question.source_page} image`)}
+                  >
+                    <img src={assetUrl(firstPageAsset.filename)} alt={firstPageAsset.filename} />
+                  </button>
+                  <figcaption>{firstPageAsset.type || `Page ${question.source_page}`}</figcaption>
+                </figure>
+                <div className="easy-page-attach-actions">
+                  <button type="button" onClick={() => void attachImageToTarget(question, firstPageAsset.filename, 'question')}>
+                    Question
+                  </button>
+                  <button type="button" onClick={() => void attachImageToTarget(question, firstPageAsset.filename, 'explanation')}>
+                    Explanation
+                  </button>
                   {options.map(option => (
-                    <label key={`${question.question_id}-upload-${option.letter}`} className="easy-asset-btn">
-                      <span>Option {normalizeOptionLetter(option.letter)}</span>
-                      <input
-                        type="file"
-                        accept="image/*"
-                        onChange={async e => {
-                          const file = e.target.files?.[0];
-                          if (!file) return;
-                          const uploaded = await uploadAsset(file);
-                          if (uploaded) await attachImageToTarget(question, uploaded, 'option', option.letter);
-                          e.currentTarget.value = '';
-                        }}
-                      />
-                    </label>
+                    <button
+                      key={`${question.question_id}-${firstPageAsset.filename}-${option.letter}`}
+                      type="button"
+                      onClick={() => void attachImageToTarget(question, firstPageAsset.filename, 'option', option.letter)}
+                    >
+                      {normalizeOptionLetter(option.letter)}
+                    </button>
                   ))}
                 </div>
+              </>
+            ) : null}
+
+            {!firstPageAsset ? (
+              <div className="easy-page-attach-actions easy-page-attach-actions--upload">
+                <label className="easy-asset-btn">
+                  <span>Question</span>
+                  <input
+                    type="file"
+                    accept="image/*"
+                    onChange={async e => {
+                      const file = e.target.files?.[0];
+                      if (!file) return;
+                      const uploaded = await uploadAsset(file);
+                      if (uploaded) await attachImageToTarget(question, uploaded, 'question');
+                      e.currentTarget.value = '';
+                    }}
+                  />
+                </label>
+                <label className="easy-asset-btn">
+                  <span>Explanation</span>
+                  <input
+                    type="file"
+                    accept="image/*"
+                    onChange={async e => {
+                      const file = e.target.files?.[0];
+                      if (!file) return;
+                      const uploaded = await uploadAsset(file);
+                      if (uploaded) await attachImageToTarget(question, uploaded, 'explanation');
+                      e.currentTarget.value = '';
+                    }}
+                  />
+                </label>
+                {options.map(option => (
+                  <label key={`${question.question_id}-upload-${option.letter}`} className="easy-asset-btn">
+                    <span>{normalizeOptionLetter(option.letter)}</span>
+                    <input
+                      type="file"
+                      accept="image/*"
+                      onChange={async e => {
+                        const file = e.target.files?.[0];
+                        if (!file) return;
+                        const uploaded = await uploadAsset(file);
+                        if (uploaded) await attachImageToTarget(question, uploaded, 'option', option.letter);
+                        e.currentTarget.value = '';
+                      }}
+                    />
+                  </label>
+                ))}
               </div>
-            </aside>
-          </div>
-        ) : null}
+            ) : null}
+          </aside>
+        </div>
 
         <div className="easy-batch-question-footer">
           <label className="easy-detail-field">
@@ -1392,6 +1560,70 @@ const EasyModeScreen: React.FC = () => {
           </div>
         </header>
 
+        <section className="easy-card easy-card--metadata-first">
+          <div className="easy-card-head">
+            <div>
+              <p className="easy-card-kicker">Set this before review</p>
+              <h3>Important metadata</h3>
+            </div>
+            <div className="easy-card-actions">
+              <button className="easy-btn subtle easy-mobile-toggle" type="button" onClick={() => setShowMetadataPanel(prev => !prev)}>
+                {showMetadataPanel ? 'Hide' : 'Show'}
+              </button>
+              <button className="easy-btn secondary" type="button" disabled={metadataSaving} onClick={() => void applyMetadataToAll()}>
+                {metadataSaving ? 'Applying...' : 'Apply to all questions'}
+              </button>
+            </div>
+          </div>
+          {showMetadataPanel ? (
+            <div className="easy-meta-grid">
+              <label>
+                <span>Subject</span>
+                <select value={metadataDraft.subject} onChange={e => setMetadataDraft(prev => ({ ...prev, subject: e.target.value, chapter: '', topic: '' }))}>
+                  <option value="">Select subject</option>
+                  {subjectOptions.map(subject => (
+                    <option key={subject} value={subject}>
+                      {subject}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label>
+                <span>Chapter</span>
+                <input
+                  value={metadataDraft.chapter}
+                  onChange={e => setMetadataDraft(prev => ({ ...prev, chapter: e.target.value }))}
+                  placeholder="Enter chapter"
+                />
+              </label>
+              <label>
+                <span>Topic</span>
+                <input
+                  value={metadataDraft.topic}
+                  onChange={e => setMetadataDraft(prev => ({ ...prev, topic: e.target.value }))}
+                  placeholder="Enter topic"
+                />
+              </label>
+              <label>
+                <span>Exam type</span>
+                <select value={metadataDraft.examType} onChange={e => setMetadataDraft(prev => ({ ...prev, examType: e.target.value }))}>
+                  <option value="">Select exam type</option>
+                  <option value="JEE">JEE</option>
+                  <option value="JEE Advance">JEE Advance</option>
+                  <option value="NEET">NEET</option>
+                  <option value="JEE/NEET Common">JEE/NEET Common</option>
+                </select>
+              </label>
+              <label>
+                <span>Published year</span>
+                <input value={metadataDraft.publishedYear} onChange={e => setMetadataDraft(prev => ({ ...prev, publishedYear: e.target.value }))} placeholder="2026" />
+              </label>
+            </div>
+          ) : (
+            <p className="easy-muted">Metadata is collapsed. Open it when you need to change subject, chapter, topic, exam type, or year.</p>
+          )}
+        </section>
+
         <section className="easy-top-stack">
           <div className="easy-card">
             <div className="easy-card-head">
@@ -1427,6 +1659,20 @@ const EasyModeScreen: React.FC = () => {
                 <button className="easy-btn primary" type="button" disabled={uploadingSource} onClick={() => void uploadSourceBatch()}>
                   {uploadingSource ? 'Uploading...' : 'Upload and Start'}
                 </button>
+                <div className="easy-upload-progress" aria-label="Batch progress">
+                  <div className="easy-upload-progress-head">
+                    <strong>{selectedBatchProgress.message}</strong>
+                    <span>{selectedBatchProgress.percent}%</span>
+                  </div>
+                  <div className="easy-upload-progress-track">
+                    <div className="easy-upload-progress-fill" style={{ width: `${selectedBatchProgress.percent}%` }} />
+                  </div>
+                  <small>
+                    {selectedBatchProgress.totalPages > 0
+                      ? `${selectedBatchProgress.pagesDone}/${selectedBatchProgress.totalPages} pages`
+                      : 'Choose a batch to see progress'}
+                  </small>
+                </div>
                 <p className="easy-muted">{sourceFile ? 'Ready to upload this file.' : 'No file selected yet.'}</p>
               </div>
               <div className="easy-batch-list easy-batch-list--compact">
@@ -1571,70 +1817,6 @@ const EasyModeScreen: React.FC = () => {
           </div>
         </section>
 
-        <section className="easy-card easy-card--metadata-first">
-          <div className="easy-card-head">
-            <div>
-              <p className="easy-card-kicker">Set this before review</p>
-              <h3>Important metadata</h3>
-            </div>
-            <div className="easy-card-actions">
-              <button className="easy-btn subtle easy-mobile-toggle" type="button" onClick={() => setShowMetadataPanel(prev => !prev)}>
-                {showMetadataPanel ? 'Hide' : 'Show'}
-              </button>
-              <button className="easy-btn secondary" type="button" disabled={metadataSaving} onClick={() => void applyMetadataToAll()}>
-                {metadataSaving ? 'Applying...' : 'Apply to all questions'}
-              </button>
-            </div>
-          </div>
-          {showMetadataPanel ? (
-            <div className="easy-meta-grid">
-              <label>
-                <span>Subject</span>
-                <select value={metadataDraft.subject} onChange={e => setMetadataDraft(prev => ({ ...prev, subject: e.target.value, chapter: '', topic: '' }))}>
-                  <option value="">Select subject</option>
-                  {subjectOptions.map(subject => (
-                    <option key={subject} value={subject}>
-                      {subject}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <label>
-                <span>Chapter</span>
-                <input
-                  value={metadataDraft.chapter}
-                  onChange={e => setMetadataDraft(prev => ({ ...prev, chapter: e.target.value }))}
-                  placeholder="Enter chapter"
-                />
-              </label>
-              <label>
-                <span>Topic</span>
-                <input
-                  value={metadataDraft.topic}
-                  onChange={e => setMetadataDraft(prev => ({ ...prev, topic: e.target.value }))}
-                  placeholder="Enter topic"
-                />
-              </label>
-              <label>
-                <span>Exam type</span>
-                <select value={metadataDraft.examType} onChange={e => setMetadataDraft(prev => ({ ...prev, examType: e.target.value }))}>
-                  <option value="">Select exam type</option>
-                  <option value="JEE">JEE</option>
-                  <option value="JEE Advance">JEE Advance</option>
-                  <option value="NEET">NEET</option>
-                  <option value="JEE/NEET Common">JEE/NEET Common</option>
-                </select>
-              </label>
-              <label>
-                <span>Published year</span>
-                <input value={metadataDraft.publishedYear} onChange={e => setMetadataDraft(prev => ({ ...prev, publishedYear: e.target.value }))} placeholder="2026" />
-              </label>
-            </div>
-          ) : (
-            <p className="easy-muted">Metadata is collapsed. Open it when you need to change subject, chapter, topic, exam type, or year.</p>
-          )}
-        </section>
-
         <section className="easy-card easy-card--review-focus">
           <div className="easy-progress-strip easy-progress-strip--review">
             <div>
@@ -1746,6 +1928,7 @@ const EasyModeScreen: React.FC = () => {
                       }
                     }}
                   />
+                  <MathPreview text={normalizeQuestionText(currentQuestion)} />
                 </label>
 
                 <div className="easy-focus-field">
@@ -1806,6 +1989,7 @@ const EasyModeScreen: React.FC = () => {
                           }}
                         />
                       </label>
+                      <MathPreview text={option.text} />
                       {toImageList(option.image_urls || option.image_url).length > 0 ? (
                         <div className="easy-inline-gallery easy-inline-gallery--compact">
                             {toImageList(option.image_urls || option.image_url).map(image => (
@@ -1848,6 +2032,7 @@ const EasyModeScreen: React.FC = () => {
                       });
                     }}
                   />
+                  <MathPreview text={currentExplanation} />
                 </label>
 
                 {currentExplanationImages.length > 0 ? (
@@ -1974,44 +2159,47 @@ const EasyModeScreen: React.FC = () => {
                       <span>{currentPageAssets.length > 0 ? "Reference images for this question's source page." : 'No page images found on this page.'}</span>
                     </div>
                   {currentPageAssets.length > 0 ? (
-                  <div className="easy-diagram-strip">
-                    {currentPageAssets.map(asset => (
-                      <figure key={`${currentQuestion.question_id}-${asset.key}`}>
-                        <button
-                          type="button"
-                          className="easy-zoom-frame"
-                          onClick={() => openZoom(asset.filename, asset.type || `Page ${currentQuestion.source_page} image`)}
-                        >
-                          <img src={assetUrl(asset.filename)} alt={asset.filename} />
-                        </button>
-                        <figcaption>{asset.type || `Page ${currentQuestion.source_page}`}</figcaption>
-                        <div className="easy-page-attach-actions">
+                    <div className="easy-diagram-strip">
+                      {currentPageAssets.map(asset => (
+                        <figure key={`${currentQuestion.question_id}-${asset.key}`}>
                           <button
                             type="button"
-                            onClick={() => void attachImageToTarget(currentQuestion, asset.filename, 'question')}
+                            className="easy-zoom-frame"
+                            onClick={() => openZoom(asset.filename, asset.type || `Page ${currentQuestion.source_page} image`)}
                           >
-                            Use for question
+                            <img src={assetUrl(asset.filename)} alt={asset.filename} />
                           </button>
-                          <button
-                            type="button"
-                            onClick={() => void attachImageToTarget(currentQuestion, asset.filename, 'explanation')}
-                          >
-                            Use for explanation
-                          </button>
-                              {currentOptions.map(option => (
-                                <button
-                                  key={`${asset.filename}-${option.letter}`}
-                                  type="button"
-                                  onClick={() => void attachImageToTarget(currentQuestion, asset.filename, 'option', option.letter)}
-                                >
-                                  Use for {normalizeOptionLetter(option.letter)}
-                                </button>
-                              ))}
-                        </div>
-                      </figure>
-                    ))}
-                  </div>
+                          <figcaption>{asset.type || `Page ${currentQuestion.source_page}`}</figcaption>
+                          <div className="easy-page-attach-actions">
+                            <button
+                              type="button"
+                              onClick={() => void attachImageToTarget(currentQuestion, asset.filename, 'question')}
+                            >
+                              Use for question
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => void attachImageToTarget(currentQuestion, asset.filename, 'explanation')}
+                            >
+                              Use for explanation
+                            </button>
+                            {currentOptions.map(option => (
+                              <button
+                                key={`${asset.filename}-${option.letter}`}
+                                type="button"
+                                onClick={() => void attachImageToTarget(currentQuestion, asset.filename, 'option', option.letter)}
+                              >
+                                Use for {normalizeOptionLetter(option.letter)}
+                              </button>
+                            ))}
+                          </div>
+                        </figure>
+                      ))}
+                    </div>
                   ) : (
+                    <p className="easy-muted">No page images found for this question.</p>
+                  )}
+
                   <div className="easy-rail-upload-tools">
                     <p>Upload your own</p>
                     <div className="easy-page-attach-actions easy-page-attach-actions--upload">
@@ -2067,7 +2255,6 @@ const EasyModeScreen: React.FC = () => {
                       ))}
                     </div>
                   </div>
-                  )}
                   </aside>
                 </div>
               </div>

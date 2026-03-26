@@ -1258,26 +1258,31 @@ const EasyModeScreen: React.FC = () => {
   }, [jobStatus?.pages_done, jobStatus?.progress, jobStatus?.status, jobStatus?.total_pages, selectedBatch?.pages_done, selectedBatch?.progress, selectedBatch?.status, selectedBatch?.total_pages]);
 
   const missingQuestionNumbers = useMemo(() => {
+    const presentNumbers = Array.from(
+      new Set(
+        questions
+          .map((question, index) => normalizeQuestionNumber(question, index + 1))
+          .filter(number => Number.isFinite(number) && number > 0)
+      )
+    ).sort((a, b) => a - b);
+
+    if (presentNumbers.length === 0) return [];
+
     const expectedTotal = Math.max(
-      0,
-      Number(selectedBatch?.total_questions || 0) || Number(jobStatus?.total_questions || 0) || summary.total
+      Number(selectedBatch?.total_questions || 0),
+      Number(jobStatus?.total_questions || 0),
+      presentNumbers[presentNumbers.length - 1] || 0
     );
-    if (expectedTotal === 0) return [];
 
-    const numbers = questions
-      .map((question, index) => normalizeQuestionNumber(question, index + 1))
-      .filter(number => Number.isFinite(number) && number > 0 && number <= expectedTotal);
-    const present = new Set(numbers);
+    const present = new Set(presentNumbers);
     const missing: number[] = [];
-
     for (let number = 1; number <= expectedTotal; number += 1) {
       if (!present.has(number)) {
         missing.push(number);
       }
     }
-
     return missing;
-  }, [jobStatus?.total_questions, questions, selectedBatch?.total_questions, summary.total]);
+  }, [jobStatus?.total_questions, questions, selectedBatch?.total_questions]);
 
   const parseElapsed = parseStartedAt ? Math.floor((nowTs - parseStartedAt) / 1000) : null;
   const showAllPageSize = 5;
@@ -1895,12 +1900,25 @@ const EasyModeScreen: React.FC = () => {
 
             <div className="easy-missed-strip">
               <span>Missed questions</span>
-              {missingQuestionNumbers.length > 0 ? (
+                  {missingQuestionNumbers.length > 0 ? (
                 <div className="easy-missed-list">
                   {missingQuestionNumbers.map(number => (
-                    <span key={`missed-${number}`} className="easy-missed-chip">
+                    <button
+                      key={`missed-${number}`}
+                      type="button"
+                      className={`easy-missed-chip ${number === currentQuestionNumber ? 'active' : ''}`}
+                      onClick={() => {
+                        const targetIndex = reviewQueue.findIndex(
+                          item => normalizeQuestionNumber(item.question, item.index + 1) === number
+                        );
+                        if (targetIndex >= 0) {
+                          setReviewIndex(targetIndex);
+                          setShowAllQuestions(false);
+                        }
+                      }}
+                    >
                       Q{number}
-                    </span>
+                    </button>
                   ))}
                 </div>
               ) : (
@@ -2214,6 +2232,42 @@ const EasyModeScreen: React.FC = () => {
                       <strong>Images from this page</strong>
                       <span>{currentPageAssets.length > 0 ? "Reference images for this question's source page." : 'No page images found on this page.'}</span>
                     </div>
+                  {(currentQuestionImages.length > 0 || currentExplanationImages.length > 0 || currentOptions.some(option => toImageList(option.image_urls || option.image_url).length > 0)) ? (
+                    <div className="easy-rail-upload-tools">
+                      <p>Attached now</p>
+                      <div className="easy-page-attach-actions easy-page-attach-actions--status">
+                        {currentQuestionImages.map(image => (
+                          <button
+                            key={`remove-question-${image}`}
+                            type="button"
+                            onClick={() => void removeImageFromTarget(currentQuestion, image, 'question')}
+                          >
+                            Remove question image
+                          </button>
+                        ))}
+                        {currentExplanationImages.map(image => (
+                          <button
+                            key={`remove-explanation-${image}`}
+                            type="button"
+                            onClick={() => void removeImageFromTarget(currentQuestion, image, 'explanation')}
+                          >
+                            Remove explanation image
+                          </button>
+                        ))}
+                        {currentOptions.flatMap(option =>
+                          toImageList(option.image_urls || option.image_url).map(image => (
+                            <button
+                              key={`remove-${option.letter}-${image}`}
+                              type="button"
+                              onClick={() => void removeImageFromTarget(currentQuestion, image, 'option', option.letter)}
+                            >
+                              Remove {normalizeOptionLetter(option.letter)} image
+                            </button>
+                          ))
+                        )}
+                      </div>
+                    </div>
+                  ) : null}
                   {currentPageAssets.length > 0 ? (
                     <div className="easy-diagram-strip">
                       {currentPageAssets.map(asset => (

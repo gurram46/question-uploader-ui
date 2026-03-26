@@ -360,6 +360,8 @@ const EasyModeScreen: React.FC = () => {
   const [savingQuestionId, setSavingQuestionId] = useState('');
   const [reviewIndex, setReviewIndex] = useState(Number(localStorage.getItem(REVIEW_INDEX_KEY) || '0'));
   const [showAllQuestions, setShowAllQuestions] = useState(false);
+  const [showAllPage, setShowAllPage] = useState(0);
+  const [expandedShowAllImageId, setExpandedShowAllImageId] = useState('');
   const [showMetadataPanel, setShowMetadataPanel] = useState(true);
   const [showAnswerKeyPanel, setShowAnswerKeyPanel] = useState(true);
   const [zoomImage, setZoomImage] = useState<{ src: string; label: string } | null>(null);
@@ -552,6 +554,37 @@ const EasyModeScreen: React.FC = () => {
     await patchQuestion(question.question_id, { options: nextOptions });
   }
 
+  async function removeImageFromTarget(question: DraftQuestion, filename: string, target: 'question' | 'explanation' | 'option', optionLetter?: string) {
+    if (target === 'question') {
+      const nextImages = currentQuestionImages.filter(item => item !== filename);
+      await patchQuestion(question.question_id, {
+        image_url: nextImages[0] || '',
+        image_urls: nextImages,
+      });
+      return;
+    }
+
+    if (target === 'explanation') {
+      const nextImages = currentExplanationImages.filter(item => item !== filename);
+      await patchQuestion(question.question_id, {
+        explanation_image: nextImages[0] || '',
+        explanation_images: nextImages,
+      });
+      return;
+    }
+
+    const nextOptions = currentOptions.map(item => {
+      if (item.letter !== optionLetter) return item;
+      const nextImages = toImageList(item.image_urls || item.image_url).filter(image => image !== filename);
+      return {
+        ...item,
+        image_url: nextImages[0] || '',
+        image_urls: nextImages,
+      };
+    });
+    await patchQuestion(question.question_id, { options: nextOptions });
+  }
+
   async function uploadSourceBatch() {
     if (!sourceFile) {
       setUiError('Choose a PDF or DOCX first.');
@@ -591,6 +624,35 @@ const EasyModeScreen: React.FC = () => {
     if (data.job_id) await pollJob(data.job_id, data.batch_id);
   }
 
+  async function deleteBatch(batchId: string) {
+    if (!batchId) return;
+    // eslint-disable-next-line no-alert
+    const ok = window.confirm(`Delete batch ${batchId}? This will remove the draft and job.`);
+    if (!ok) return;
+    setUiError('');
+    setUiNotice('');
+    const response = await apiFetch(`${PYTHON_API_BASE}/draft/${batchId}`, {
+      method: 'DELETE',
+      headers: authHeaders(),
+    });
+    if (!response.ok) {
+      const message = await response.text();
+      setUiError(message || 'Failed to delete this batch.');
+      return;
+    }
+    const remaining = batches.filter(batch => batch.batch_id !== batchId);
+    setBatches(remaining);
+    if (selectedBatchId === batchId) {
+      const nextBatchId = remaining[0]?.batch_id || '';
+      setSelectedBatchId(nextBatchId);
+      if (!nextBatchId) {
+        setDraft(null);
+        setJobStatus(null);
+      }
+    }
+    setUiNotice(`Deleted batch ${batchId}.`);
+  }
+
   async function parseAnswerKey() {
     if (!answerKeyFile) {
       setUiError('Choose an answer key file first.');
@@ -601,7 +663,7 @@ const EasyModeScreen: React.FC = () => {
     const parseStart = Date.now();
     setParseStartedAt(parseStart);
     setParseSeconds(null);
-    setAnswerKeyStatus('Parsing answer key...');
+    setAnswerKeyStatus('Reading answer key...');
     setReviewedPairs([]);
     setReviewConfirmed(false);
     const form = new FormData();
@@ -629,13 +691,13 @@ const EasyModeScreen: React.FC = () => {
     setParseSeconds(Math.max(0, Math.floor((Date.now() - parseStart) / 1000)));
     setParseStartedAt(null);
     if (!response.ok) {
-      setUiError(data.detail || 'Answer key parse failed.');
-      setAnswerKeyStatus('Answer key parse failed.');
+      setUiError(data.detail || 'Could not read the answer key.');
+      setAnswerKeyStatus('Could not read the answer key.');
       return;
     }
     const pairs = Array.isArray(data.pairs) ? data.pairs : [];
     setReviewedPairs(pairs.map(pair => ({ number: pair.number, answer: String(pair.answer || '').toUpperCase() })));
-    setAnswerKeyStatus(pairs.length ? `Parsed ${pairs.length} answers. Review and apply.` : 'No answers found in the key.');
+    setAnswerKeyStatus(pairs.length ? `Read ${pairs.length} answers. Review and fill them.` : 'No answers found in the key.');
   }
 
   async function applyReviewedAnswers() {
@@ -910,6 +972,17 @@ const EasyModeScreen: React.FC = () => {
     }
   }, [reviewIndex, reviewQueue.length]);
 
+  useEffect(() => {
+    if (reviewQueue.length === 0) {
+      setShowAllPage(0);
+      return;
+    }
+    const maxPage = Math.max(0, Math.ceil(reviewQueue.length / 5) - 1);
+    if (showAllPage > maxPage) {
+      setShowAllPage(maxPage);
+    }
+  }, [reviewQueue.length, showAllPage]);
+
   const safeReviewIndex = reviewIndex >= 0 && reviewIndex < reviewQueue.length ? reviewIndex : 0;
   const currentReviewItem = reviewQueue.find((_, index) => index === safeReviewIndex) || null;
   const currentQuestion = currentReviewItem?.question || null;
@@ -948,8 +1021,31 @@ const EasyModeScreen: React.FC = () => {
   }, [questions, reviewQueue.length]);
 
   const completedCount = Math.max(0, summary.total - summary.reviewNeeded);
+  const missingQuestionNumbers = useMemo(() => {
+    const expectedTotal = Math.max(0, summary.total);
+    if (expectedTotal === 0) return [];
+
+    const numbers = questions
+      .map((question, index) => normalizeQuestionNumber(question, index + 1))
+      .filter(number => Number.isFinite(number) && number > 0 && number <= expectedTotal);
+    const present = new Set(numbers);
+    const missing: number[] = [];
+
+    for (let number = 1; number <= expectedTotal; number += 1) {
+      if (!present.has(number)) {
+        missing.push(number);
+      }
+    }
+
+    return missing;
+  }, [questions, summary.total]);
 
   const parseElapsed = parseStartedAt ? Math.floor((nowTs - parseStartedAt) / 1000) : null;
+  const showAllPageSize = 5;
+  const showAllPageCount = Math.max(1, Math.ceil(reviewQueue.length / showAllPageSize));
+  const safeShowAllPage = Math.min(Math.max(showAllPage, 0), showAllPageCount - 1);
+  const showAllStart = safeShowAllPage * showAllPageSize;
+  const visibleReviewItems = reviewQueue.slice(showAllStart, showAllStart + showAllPageSize);
 
   function assetUrl(filename: string) {
     const token = encodeURIComponent(localStorage.getItem('token') || '');
@@ -970,6 +1066,304 @@ const EasyModeScreen: React.FC = () => {
         }
         return { ...pair, answer: value.toUpperCase() };
       })
+    );
+  }
+
+  function setQuestionAnswers(question: DraftQuestion, nextAnswers: AnswerLetter[]) {
+    const options = Array.isArray(question.options) ? ensureEditorOptions(question.options) : ensureEditorOptions([]);
+    const inferredType = nextAnswers.length > 1 ? 'multiple_correct' : 'single_correct';
+    void patchQuestion(question.question_id, {
+      correct_option_letters: nextAnswers.join(','),
+      questionType: inferredType,
+      question_type: inferredType,
+      options: patchOptionsWithAnswers(options, nextAnswers),
+    });
+  }
+
+  function renderPagedQuestionCard(item: { question: DraftQuestion; index: number; reasons: string[] }) {
+    const question = item.question;
+    const questionNumber = normalizeQuestionNumber(question, item.index + 1);
+    const options = Array.isArray(question.options) ? ensureEditorOptions(question.options) : ensureEditorOptions([]);
+    const answers = serializeCorrectAnswers(question);
+    const questionType = question.questionType || question.question_type || 'single_correct';
+    const level =
+      question.difficulty_level !== null && question.difficulty_level !== undefined ? String(question.difficulty_level) : '';
+    const difficultyType = question.difficulty_type || '';
+    const questionImages = toImageList(question.image_urls || question.image_url);
+    const explanationImages = toImageList(question.explanation_images || question.explanation_image);
+    const pageAssets = assetEntries.filter(asset => asset.source_page === question.source_page);
+    const showImages = expandedShowAllImageId === question.question_id;
+
+    return (
+      <article key={question.question_id} className="easy-batch-question-card">
+        <div className="easy-batch-question-head">
+          <div>
+            <strong>Q{questionNumber}</strong>
+            <span>Page {question.source_page || '?'}</span>
+          </div>
+          <div className="easy-batch-question-tools">
+            <div className="easy-focus-tags">
+              {item.reasons.map(reason => (
+                <span key={`${question.question_id}-${reason}`}>{reason}</span>
+              ))}
+            </div>
+            <div className="easy-batch-question-actions">
+              <button
+                className="easy-btn subtle"
+                type="button"
+                onClick={() =>
+                  setExpandedShowAllImageId(prev => (prev === question.question_id ? '' : question.question_id))
+                }
+              >
+                {showImages ? 'Hide images' : 'Images'}
+              </button>
+              <button
+                className="easy-btn subtle"
+                type="button"
+                onClick={() => {
+                  setReviewIndex(item.index);
+                  setShowAllQuestions(false);
+                }}
+              >
+                Focus this question
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <label className="easy-focus-field">
+          <span>Question text</span>
+          <textarea
+            className="easy-question-text"
+            defaultValue={normalizeQuestionText(question)}
+            placeholder="Question text"
+            onBlur={e => {
+              const nextText = e.target.value;
+              if (nextText !== normalizeQuestionText(question)) {
+                void patchQuestion(question.question_id, { questionText: nextText });
+              }
+            }}
+          />
+        </label>
+
+        <div className="easy-option-list">
+          {options.map(option => (
+            <div className="easy-option-block" key={`${question.question_id}-${option.letter}`}>
+              <label className="easy-option-row">
+                <input
+                  className="easy-option-check"
+                  type="checkbox"
+                  checked={Boolean(option.is_correct)}
+                  onChange={() => {
+                    const choice = normalizeOptionLetter(option.letter) as AnswerLetter;
+                    const nextAnswers = option.is_correct
+                      ? answers.filter(answer => answer !== choice)
+                      : (Array.from(new Set([...answers, choice])) as AnswerLetter[]);
+                    setQuestionAnswers(question, nextAnswers);
+                  }}
+                />
+                <span>{normalizeOptionLetter(option.letter)}</span>
+                <input
+                  type="text"
+                  defaultValue={option.text}
+                  placeholder={`Option ${normalizeOptionLetter(option.letter)}`}
+                  onBlur={e => {
+                    const nextOptions = options.map(itemOption =>
+                      itemOption.letter === option.letter ? { ...itemOption, text: e.target.value } : itemOption
+                    );
+                    void patchQuestion(question.question_id, { options: nextOptions });
+                  }}
+                />
+              </label>
+            </div>
+          ))}
+        </div>
+
+        {showImages ? (
+          <div className="easy-batch-image-panel">
+            <div className="easy-batch-image-column">
+              {questionImages.length > 0 ? (
+                <div className="easy-inline-gallery easy-inline-gallery--compact">
+                  {questionImages.map(image => (
+                    <figure key={`${question.question_id}-showall-question-${image}`}>
+                      <button type="button" className="easy-zoom-frame" onClick={() => openZoom(image, 'Question image')}>
+                        <img src={assetUrl(image)} alt="question" />
+                      </button>
+                      <figcaption>Question image</figcaption>
+                      <button type="button" className="easy-inline-remove" onClick={() => void removeImageFromTarget(question, image, 'question')}>
+                        Remove image
+                      </button>
+                    </figure>
+                  ))}
+                </div>
+              ) : null}
+
+              {explanationImages.length > 0 ? (
+                <div className="easy-inline-gallery easy-inline-gallery--compact">
+                  {explanationImages.map(image => (
+                    <figure key={`${question.question_id}-showall-explanation-${image}`}>
+                      <button type="button" className="easy-zoom-frame" onClick={() => openZoom(image, 'Explanation image')}>
+                        <img src={assetUrl(image)} alt="explanation" />
+                      </button>
+                      <figcaption>Explanation image</figcaption>
+                      <button type="button" className="easy-inline-remove" onClick={() => void removeImageFromTarget(question, image, 'explanation')}>
+                        Remove image
+                      </button>
+                    </figure>
+                  ))}
+                </div>
+              ) : null}
+            </div>
+
+            <aside className="easy-batch-image-rail">
+              <div className="easy-rail-head">
+                <strong>Images for this question</strong>
+                <span>{pageAssets.length > 0 ? 'Use the page image if it matches, or upload your own.' : 'No page image found. Upload your own.'}</span>
+              </div>
+
+              {pageAssets.length > 0 ? (
+                <div className="easy-diagram-strip">
+                  {pageAssets.map(asset => (
+                    <figure key={`${question.question_id}-showall-page-${asset.key}`}>
+                      <button type="button" className="easy-zoom-frame" onClick={() => openZoom(asset.filename, asset.type || `Page ${question.source_page} image`)}>
+                        <img src={assetUrl(asset.filename)} alt={asset.filename} />
+                      </button>
+                      <figcaption>{asset.type || `Page ${question.source_page}`}</figcaption>
+                      <div className="easy-page-attach-actions">
+                        <button type="button" onClick={() => void attachImageToTarget(question, asset.filename, 'question')}>
+                          Use for question
+                        </button>
+                        <button type="button" onClick={() => void attachImageToTarget(question, asset.filename, 'explanation')}>
+                          Use for explanation
+                        </button>
+                        {options.map(option => (
+                          <button
+                            key={`${question.question_id}-${asset.filename}-${option.letter}`}
+                            type="button"
+                            onClick={() => void attachImageToTarget(question, asset.filename, 'option', option.letter)}
+                          >
+                            Use for {normalizeOptionLetter(option.letter)}
+                          </button>
+                        ))}
+                      </div>
+                    </figure>
+                  ))}
+                </div>
+              ) : null}
+
+              <div className="easy-rail-upload-tools">
+                <p>Upload your own</p>
+                <div className="easy-page-attach-actions easy-page-attach-actions--upload">
+                  <label className="easy-asset-btn">
+                    <span>Question</span>
+                    <input
+                      type="file"
+                      accept="image/*"
+                      onChange={async e => {
+                        const file = e.target.files?.[0];
+                        if (!file) return;
+                        const uploaded = await uploadAsset(file);
+                        if (uploaded) await attachImageToTarget(question, uploaded, 'question');
+                        e.currentTarget.value = '';
+                      }}
+                    />
+                  </label>
+                  <label className="easy-asset-btn">
+                    <span>Explanation</span>
+                    <input
+                      type="file"
+                      accept="image/*"
+                      onChange={async e => {
+                        const file = e.target.files?.[0];
+                        if (!file) return;
+                        const uploaded = await uploadAsset(file);
+                        if (uploaded) await attachImageToTarget(question, uploaded, 'explanation');
+                        e.currentTarget.value = '';
+                      }}
+                    />
+                  </label>
+                  {options.map(option => (
+                    <label key={`${question.question_id}-upload-${option.letter}`} className="easy-asset-btn">
+                      <span>Option {normalizeOptionLetter(option.letter)}</span>
+                      <input
+                        type="file"
+                        accept="image/*"
+                        onChange={async e => {
+                          const file = e.target.files?.[0];
+                          if (!file) return;
+                          const uploaded = await uploadAsset(file);
+                          if (uploaded) await attachImageToTarget(question, uploaded, 'option', option.letter);
+                          e.currentTarget.value = '';
+                        }}
+                      />
+                    </label>
+                  ))}
+                </div>
+              </div>
+            </aside>
+          </div>
+        ) : null}
+
+        <div className="easy-batch-question-footer">
+          <label className="easy-detail-field">
+            <span>Type</span>
+            <select
+              value={questionType}
+              onChange={e => {
+                void patchQuestion(question.question_id, {
+                  questionType: e.target.value,
+                  question_type: e.target.value,
+                });
+              }}
+            >
+              <option value="single_correct">Single correct</option>
+              <option value="multiple_correct">Multiple correct</option>
+              <option value="numerical">Numerical</option>
+              <option value="matching">Matching</option>
+              <option value="assertion_and_reason">Assertion and reason</option>
+              <option value="statements">Statements</option>
+            </select>
+          </label>
+
+          <label className="easy-detail-field">
+            <span>Level</span>
+            <select
+              value={level}
+              onChange={e => {
+                const raw = e.target.value;
+                const parsed = Number(raw);
+                void patchQuestion(question.question_id, {
+                  difficulty_level: raw === '' || !Number.isFinite(parsed) ? null : parsed,
+                });
+              }}
+            >
+              <option value="">Select level</option>
+              <option value="1">1</option>
+              <option value="2">2</option>
+              <option value="3">3</option>
+            </select>
+          </label>
+
+          <label className="easy-detail-field">
+            <span>Difficulty type</span>
+            <select
+              value={difficultyType}
+              onChange={e => {
+                void patchQuestion(question.question_id, {
+                  difficulty_type: e.target.value,
+                });
+              }}
+            >
+              <option value="">Select</option>
+              {DIFFICULTY_TYPES.map(type => (
+                <option value={type} key={type}>
+                  {type}
+                </option>
+              ))}
+            </select>
+          </label>
+        </div>
+      </article>
     );
   }
 
@@ -1005,9 +1399,16 @@ const EasyModeScreen: React.FC = () => {
                 <p className="easy-card-kicker">First</p>
                 <h3>Choose batch or upload source</h3>
               </div>
-              <button className="easy-btn subtle" type="button" onClick={() => void loadBatches()}>
-                Refresh
-              </button>
+              <div className="easy-card-actions">
+                {selectedBatchId ? (
+                  <button className="easy-btn subtle" type="button" onClick={() => void deleteBatch(selectedBatchId)}>
+                    Delete batch
+                  </button>
+                ) : null}
+                <button className="easy-btn subtle" type="button" onClick={() => void loadBatches()}>
+                  Refresh
+                </button>
+              </div>
             </div>
             <div className="easy-batch-grid easy-batch-grid--top">
               <div className="easy-batch-create">
@@ -1073,10 +1474,10 @@ const EasyModeScreen: React.FC = () => {
                   </label>
                   <div className="easy-key-actions">
                     <button className="easy-btn primary" type="button" onClick={() => void parseAnswerKey()}>
-                      Parse
+                      Read key
                     </button>
                     <button className="easy-btn secondary" type="button" onClick={() => void applyReviewedAnswers()} disabled={!reviewedPairs.length || !reviewConfirmed}>
-                      Apply key
+                      Fill answers
                     </button>
                   </div>
                 </div>
@@ -1118,10 +1519,10 @@ const EasyModeScreen: React.FC = () => {
                     />
                   </label>
                 </div>
-                <p className="easy-muted">
-                  Parse scope: pages {parseConfig.startPage} to {Math.max(Number(parseConfig.startPage) || 1, (Number(parseConfig.startPage) || 1) + (Number(parseConfig.maxPages) || 1) - 1)} ,
-                  questions {parseConfig.minQuestion} to {parseConfig.maxQuestion}
-                </p>
+                  <p className="easy-muted">
+                    Key pages: {parseConfig.startPage} to {Math.max(Number(parseConfig.startPage) || 1, (Number(parseConfig.startPage) || 1) + (Number(parseConfig.maxPages) || 1) - 1)} ,
+                    questions {parseConfig.minQuestion} to {parseConfig.maxQuestion}
+                  </p>
                 <div className="easy-parse-grid easy-parse-grid--compact">
                   <div className="easy-status-card">
                     <span>Status</span>
@@ -1248,13 +1649,28 @@ const EasyModeScreen: React.FC = () => {
               <span>Still needs work</span>
               <strong>{summary.reviewNeeded}</strong>
             </div>
-            <div>
-              <span>Current</span>
-              <strong>{currentQuestion ? `Q${currentQuestionNumber}` : 'All done'}</strong>
+              <div>
+                <span>Current</span>
+                <strong>{currentQuestion ? `Q${currentQuestionNumber}` : 'All done'}</strong>
+              </div>
             </div>
-          </div>
 
-          <div className="easy-card-head">
+            <div className="easy-missed-strip">
+              <span>Missed questions</span>
+              {missingQuestionNumbers.length > 0 ? (
+                <div className="easy-missed-list">
+                  {missingQuestionNumbers.map(number => (
+                    <span key={`missed-${number}`} className="easy-missed-chip">
+                      Q{number}
+                    </span>
+                  ))}
+                </div>
+              ) : (
+                <strong>None</strong>
+              )}
+            </div>
+
+            <div className="easy-card-head">
             <div>
               <p className="easy-card-kicker">Main task</p>
               <h3>Fix one flagged question</h3>
@@ -1263,7 +1679,14 @@ const EasyModeScreen: React.FC = () => {
               <button type="button" className={!showAllQuestions ? 'active' : ''} onClick={() => setShowAllQuestions(false)}>
                 Focus mode
               </button>
-              <button type="button" className={showAllQuestions ? 'active' : ''} onClick={() => setShowAllQuestions(true)}>
+              <button
+                type="button"
+                className={showAllQuestions ? 'active' : ''}
+                onClick={() => {
+                  setShowAllQuestions(true);
+                  setShowAllPage(Math.floor(safeReviewIndex / showAllPageSize));
+                }}
+              >
                 Show all
               </button>
             </div>
@@ -1329,15 +1752,22 @@ const EasyModeScreen: React.FC = () => {
                   <span>Question image</span>
                   {currentQuestionImages.length > 0 ? (
                     <div className="easy-inline-gallery">
-                      {currentQuestionImages.map(image => (
-                        <figure key={`${currentQuestion.question_id}-question-${image}`}>
-                          <button type="button" className="easy-zoom-frame" onClick={() => openZoom(image, 'Question image')}>
-                            <img src={assetUrl(image)} alt="question" />
-                          </button>
-                          <figcaption>Question image. Click to zoom.</figcaption>
-                        </figure>
-                      ))}
-                    </div>
+                        {currentQuestionImages.map(image => (
+                          <figure key={`${currentQuestion.question_id}-question-${image}`}>
+                            <button type="button" className="easy-zoom-frame" onClick={() => openZoom(image, 'Question image')}>
+                              <img src={assetUrl(image)} alt="question" />
+                            </button>
+                            <figcaption>Question image. Click to zoom.</figcaption>
+                            <button
+                              type="button"
+                              className="easy-inline-remove"
+                              onClick={() => void removeImageFromTarget(currentQuestion, image, 'question')}
+                            >
+                              Remove image
+                            </button>
+                          </figure>
+                        ))}
+                      </div>
                   ) : null}
                 </div>
 
@@ -1378,19 +1808,26 @@ const EasyModeScreen: React.FC = () => {
                       </label>
                       {toImageList(option.image_urls || option.image_url).length > 0 ? (
                         <div className="easy-inline-gallery easy-inline-gallery--compact">
-                          {toImageList(option.image_urls || option.image_url).map(image => (
-                            <figure key={`${currentQuestion.question_id}-${option.letter}-${image}`}>
+                            {toImageList(option.image_urls || option.image_url).map(image => (
+                              <figure key={`${currentQuestion.question_id}-${option.letter}-${image}`}>
                               <button
                                 type="button"
                                 className="easy-zoom-frame"
                                 onClick={() => openZoom(image, `Option ${normalizeOptionLetter(option.letter)} image`)}
-                              >
-                                <img src={assetUrl(image)} alt={`option ${normalizeOptionLetter(option.letter)}`} />
-                              </button>
-                              <figcaption>Option {normalizeOptionLetter(option.letter)} image. Click to zoom.</figcaption>
-                            </figure>
-                          ))}
-                        </div>
+                                >
+                                  <img src={assetUrl(image)} alt={`option ${normalizeOptionLetter(option.letter)}`} />
+                                </button>
+                                <figcaption>Option {normalizeOptionLetter(option.letter)} image. Click to zoom.</figcaption>
+                                <button
+                                  type="button"
+                                  className="easy-inline-remove"
+                                  onClick={() => void removeImageFromTarget(currentQuestion, image, 'option', option.letter)}
+                                >
+                                  Remove image
+                                </button>
+                              </figure>
+                            ))}
+                          </div>
                       ) : null}
                     </div>
                   ))}
@@ -1415,14 +1852,21 @@ const EasyModeScreen: React.FC = () => {
 
                 {currentExplanationImages.length > 0 ? (
                   <div className="easy-inline-gallery">
-                    {currentExplanationImages.map(image => (
-                      <figure key={`${currentQuestion.question_id}-explanation-${image}`}>
-                        <button type="button" className="easy-zoom-frame" onClick={() => openZoom(image, 'Explanation image')}>
-                          <img src={assetUrl(image)} alt="explanation" />
-                        </button>
-                        <figcaption>Explanation image. Click to zoom.</figcaption>
-                      </figure>
-                    ))}
+                      {currentExplanationImages.map(image => (
+                        <figure key={`${currentQuestion.question_id}-explanation-${image}`}>
+                          <button type="button" className="easy-zoom-frame" onClick={() => openZoom(image, 'Explanation image')}>
+                            <img src={assetUrl(image)} alt="explanation" />
+                          </button>
+                          <figcaption>Explanation image. Click to zoom.</figcaption>
+                          <button
+                            type="button"
+                            className="easy-inline-remove"
+                            onClick={() => void removeImageFromTarget(currentQuestion, image, 'explanation')}
+                          >
+                            Remove image
+                          </button>
+                        </figure>
+                      ))}
                   </div>
                 ) : null}
 
@@ -1634,13 +2078,41 @@ const EasyModeScreen: React.FC = () => {
               </div>
             )
           ) : (
-            <div className="easy-mini-list">
-              {reviewQueue.map((item, index) => (
-                <button key={item.question.question_id} type="button" className={`easy-mini-item ${index === reviewIndex ? 'active' : ''}`} onClick={() => setReviewIndex(index)}>
-                  <strong>Q{normalizeQuestionNumber(item.question, item.index + 1)}</strong>
-                  <span>{item.reasons.join(', ')}</span>
-                </button>
-              ))}
+            <div className="easy-showall-page">
+              <div className="easy-showall-head">
+                <div>
+                  <strong>Fix 5 questions at a time</strong>
+                  <span>
+                    Showing {reviewQueue.length === 0 ? 0 : showAllStart + 1}-
+                    {Math.min(showAllStart + visibleReviewItems.length, reviewQueue.length)} of {reviewQueue.length}
+                  </span>
+                </div>
+                <div className="easy-queue-actions">
+                  <button
+                    className="easy-btn subtle"
+                    type="button"
+                    disabled={safeShowAllPage <= 0}
+                    onClick={() => setShowAllPage(prev => Math.max(0, prev - 1))}
+                  >
+                    Previous page
+                  </button>
+                  <span className="easy-showall-page-indicator">
+                    Page {showAllPageCount === 0 ? 0 : safeShowAllPage + 1} of {showAllPageCount}
+                  </span>
+                  <button
+                    className="easy-btn subtle"
+                    type="button"
+                    disabled={safeShowAllPage >= showAllPageCount - 1}
+                    onClick={() => setShowAllPage(prev => Math.min(showAllPageCount - 1, prev + 1))}
+                  >
+                    Next page
+                  </button>
+                </div>
+              </div>
+
+              <div className="easy-batch-question-list">
+                {visibleReviewItems.map(item => renderPagedQuestionCard(item))}
+              </div>
             </div>
           )}
         </section>

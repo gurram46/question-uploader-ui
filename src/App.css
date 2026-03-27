@@ -2420,6 +2420,10 @@
   gap: 1rem;
 }
 
+.easy-batch-question-list--compact {
+  gap: 0.7rem;
+}
+
 .easy-batch-question-card {
   display: grid;
   gap: 1rem;
@@ -2427,6 +2431,146 @@
   border: 1px solid #dbe3ec;
   border-radius: 20px;
   background: #fff;
+}
+
+.easy-batch-question-card--compact {
+  gap: 0.7rem;
+  padding: 0.75rem 0.85rem;
+  border-radius: 16px;
+}
+
+.easy-batch-question-card--compact .easy-batch-question-head {
+  gap: 0.7rem;
+}
+
+.easy-batch-question-card--compact .easy-batch-question-head strong {
+  font-size: 1rem;
+}
+
+.easy-batch-question-card--compact .easy-batch-question-head span,
+.easy-batch-question-card--compact .easy-inline-note,
+.easy-batch-question-card--compact .easy-answer-help,
+.easy-batch-question-card--compact .easy-muted {
+  font-size: 0.75rem;
+}
+
+.easy-batch-question-card--compact .easy-focus-tags span,
+.easy-batch-question-card--compact .easy-breadcrumb span {
+  font-size: 0.72rem;
+  padding: 0.28rem 0.5rem;
+}
+
+.easy-batch-question-card--compact .easy-focus-layout,
+.easy-batch-question-card--compact .easy-batch-image-panel,
+.easy-batch-question-card--compact .easy-batch-image-panel--compact {
+  gap: 0.75rem;
+  padding: 0.75rem;
+  grid-template-columns: minmax(0, 1fr) minmax(220px, 0.48fr);
+}
+
+.easy-batch-question-card--compact .easy-focus-main,
+.easy-batch-question-card--compact .easy-batch-image-column,
+.easy-batch-question-card--compact .easy-batch-image-rail {
+  gap: 0.65rem;
+}
+
+.easy-batch-question-card--compact .easy-page-assets-rail,
+.easy-batch-question-card--compact .easy-batch-image-rail {
+  padding: 0.7rem;
+  border-radius: 14px;
+}
+
+.easy-batch-question-card--compact .easy-focus-field > span,
+.easy-batch-question-card--compact .easy-detail-field > span,
+.easy-batch-question-card--compact .easy-option-row span {
+  font-size: 0.8rem;
+}
+
+.easy-batch-question-card--compact .easy-question-text {
+  min-height: 82px;
+  padding: 0.72rem 0.85rem;
+  font-size: 0.9rem;
+  line-height: 1.35;
+}
+
+.easy-batch-question-card--compact .easy-option-block {
+  gap: 0.35rem;
+}
+
+.easy-batch-question-card--compact .easy-option-row {
+  gap: 0.55rem;
+  grid-template-columns: 22px 28px minmax(0, 1fr);
+}
+
+.easy-batch-question-card--compact .easy-option-check {
+  width: 16px;
+  height: 16px;
+}
+
+.easy-batch-question-card--compact .easy-option-row input[type="text"] {
+  min-height: 38px;
+  padding: 0.58rem 0.75rem;
+  font-size: 0.88rem;
+}
+
+.easy-batch-question-card--compact .easy-quick-details {
+  gap: 0.65rem;
+}
+
+.easy-batch-question-card--compact .easy-detail-field select,
+.easy-batch-question-card--compact .easy-detail-field input {
+  min-height: 38px;
+  font-size: 0.86rem;
+  padding: 0.55rem 0.75rem;
+}
+
+.easy-batch-question-card--compact .easy-card-actions {
+  gap: 0.5rem;
+}
+
+.easy-batch-question-card--compact .easy-btn {
+  min-height: 38px;
+  padding: 0.62rem 0.9rem;
+  font-size: 0.82rem;
+}
+
+.easy-batch-question-card--compact .easy-diagram-strip img {
+  height: 120px;
+  padding: 0.45rem;
+}
+
+.easy-batch-question-card--compact .easy-page-attach-actions {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.35rem;
+  padding: 0.45rem;
+}
+
+.easy-batch-question-card--compact .easy-page-attach-actions button,
+.easy-batch-question-card--compact .easy-page-attach-actions--upload .easy-asset-btn {
+  min-height: 34px;
+  padding: 0.4rem 0.55rem;
+  font-size: 0.72rem;
+  border-radius: 10px;
+}
+
+.easy-batch-question-card--compact .easy-inline-gallery figure,
+.easy-batch-question-card--compact .easy-compact-image-card {
+  gap: 0.35rem;
+}
+
+.easy-batch-question-card--compact .easy-inline-gallery img {
+  max-height: 110px;
+  object-fit: contain;
+}
+
+.easy-batch-question-card--compact .easy-math-preview {
+  margin-top: 0.35rem;
+  padding: 0.5rem 0.65rem;
+}
+
+.easy-batch-question-card--compact .easy-math-preview-body {
+  font-size: 0.88rem;
+  line-height: 1.35;
 }
 
 .easy-batch-question-head {

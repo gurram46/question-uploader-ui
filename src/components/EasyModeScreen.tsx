@@ -81,11 +81,6 @@ type JobStatus = {
   total_questions?: number;
 };
 
-type ParsedPair = {
-  number: number;
-  answer: string;
-};
-
 type CommitResponse = {
   insertedCount?: number;
   inserted?: number;
@@ -492,8 +487,7 @@ const EasyModeScreen: React.FC = () => {
   const [jobStatus, setJobStatus] = useState<JobStatus | null>(null);
   const [sourceFile, setSourceFile] = useState<File | null>(null);
   const [answerKeyFile, setAnswerKeyFile] = useState<File | null>(null);
-  const [reviewedPairs, setReviewedPairs] = useState<ParsedPair[]>([]);
-  const [reviewConfirmed, setReviewConfirmed] = useState(false);
+  const [appliedAnswerCount, setAppliedAnswerCount] = useState(0);
   const [answerKeyStatus, setAnswerKeyStatus] = useState('Upload an answer key if you have one.');
   const [uiError, setUiError] = useState('');
   const [uiNotice, setUiNotice] = useState('');
@@ -879,9 +873,8 @@ const EasyModeScreen: React.FC = () => {
     const parseStart = Date.now();
     setParseStartedAt(parseStart);
     setParseSeconds(null);
-    setAnswerKeyStatus('Reading answer key...');
-    setReviewedPairs([]);
-    setReviewConfirmed(false);
+    setAppliedAnswerCount(0);
+    setAnswerKeyStatus('Uploading key...');
     const form = new FormData();
     form.append('file', answerKeyFile);
     const startPage = Math.max(1, Number(parseConfig.startPage) || answerKeyScope.startPage);
@@ -895,7 +888,7 @@ const EasyModeScreen: React.FC = () => {
       max_q: String(maxQuestion),
       ocr_dpi: String(answerKeyScope.ocrDpi),
     });
-    const response = await apiFetch(
+    const parseResponse = await apiFetch(
       `${PYTHON_API_BASE}/draft/answer-key/parse?${params.toString()}`,
       {
         method: 'POST',
@@ -903,40 +896,34 @@ const EasyModeScreen: React.FC = () => {
         body: form,
       }
     );
-    const data = (await response.json()) as { pairs?: ParsedPair[]; detail?: string };
+    const parseData = (await parseResponse.json()) as { pairs?: Array<{ number: number; answer: string }>; detail?: string };
     setParseSeconds(Math.max(0, Math.floor((Date.now() - parseStart) / 1000)));
     setParseStartedAt(null);
-    if (!response.ok) {
-      setUiError(data.detail || 'Could not read the answer key.');
-      setAnswerKeyStatus('Could not read the answer key.');
+    if (!parseResponse.ok) {
+      setUiError(parseData.detail || 'Could not upload the key.');
+      setAnswerKeyStatus('Could not upload the key.');
       return;
     }
-    const pairs = Array.isArray(data.pairs) ? data.pairs : [];
-    setReviewedPairs(pairs.map(pair => ({ number: pair.number, answer: String(pair.answer || '').toUpperCase() })));
-    setAnswerKeyStatus(pairs.length ? `Read ${pairs.length} answers. Review and fill them.` : 'No answers found in the key.');
-  }
-
-  async function applyReviewedAnswers() {
+    const pairs = Array.isArray(parseData.pairs) ? parseData.pairs : [];
     if (!selectedBatchId) {
       setUiError('Choose or create a batch first.');
+      setAnswerKeyStatus('Choose or create a batch first.');
       return;
     }
-    const validPairs = reviewedPairs
+    const validPairs = pairs
       .map(pair => ({
         number: Number(pair.number),
         answer: String(pair.answer || '').trim().toUpperCase(),
       }))
       .filter(pair => Number.isFinite(pair.number) && pair.number > 0 && ANSWER_CHOICES.includes(pair.answer as AnswerLetter));
     if (!validPairs.length) {
-      setUiError('No reviewed answers are ready to apply.');
-      return;
-    }
-    if (!reviewConfirmed) {
-      setUiError('Confirm the review before applying the answer key.');
+      setUiError('No answers were found in the key.');
+      setAnswerKeyStatus('No answers found in the key.');
       return;
     }
     setUiError('');
-    const response = await apiFetch(`${PYTHON_API_BASE}/draft/${selectedBatchId}/answer-key/apply`, {
+    setAnswerKeyStatus('Applying key to questions...');
+    const applyResponse = await apiFetch(`${PYTHON_API_BASE}/draft/${selectedBatchId}/answer-key/apply`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -949,13 +936,16 @@ const EasyModeScreen: React.FC = () => {
         max_q: Math.max(...validPairs.map(pair => pair.number)),
       }),
     });
-    const data = (await response.json()) as { applied_count?: number; detail?: string };
-    if (!response.ok) {
-      setUiError(data.detail || 'Failed to apply reviewed answers.');
+    const applyData = (await applyResponse.json()) as { applied_count?: number; detail?: string };
+    if (!applyResponse.ok) {
+      setUiError(applyData.detail || 'Failed to apply the key.');
+      setAnswerKeyStatus('Failed to apply the key.');
       return;
     }
-    setUiNotice(`Applied ${data.applied_count || 0} reviewed answers.`);
-    setAnswerKeyStatus(`Applied ${data.applied_count || 0} reviewed answers.`);
+    const appliedCount = applyData.applied_count || 0;
+    setAppliedAnswerCount(appliedCount);
+    setUiNotice(`Keys applied. Applied ${appliedCount} answers. Please fact-check while reviewing.`);
+    setAnswerKeyStatus(`Keys applied. Applied ${appliedCount} answers. Please fact-check while reviewing.`);
     await loadDraft(selectedBatchId);
   }
 
@@ -1308,21 +1298,17 @@ const EasyModeScreen: React.FC = () => {
 
     if (presentNumbers.length === 0) return [];
 
-    const expectedTotal = Math.max(
-      Number(selectedBatch?.total_questions || 0),
-      Number(jobStatus?.total_questions || 0),
-      presentNumbers[presentNumbers.length - 1] || 0
-    );
-
     const present = new Set(presentNumbers);
     const missing: number[] = [];
-    for (let number = 1; number <= expectedTotal; number += 1) {
+    const firstLoaded = presentNumbers[0] || 1;
+    const lastLoaded = presentNumbers[presentNumbers.length - 1] || firstLoaded;
+    for (let number = firstLoaded; number <= lastLoaded; number += 1) {
       if (!present.has(number)) {
         missing.push(number);
       }
     }
     return missing;
-  }, [jobStatus?.total_questions, questions, selectedBatch?.total_questions]);
+  }, [questions]);
 
   const parseElapsed = parseStartedAt ? Math.floor((nowTs - parseStartedAt) / 1000) : null;
   const showAllPageSize = 5;
@@ -1338,19 +1324,6 @@ const EasyModeScreen: React.FC = () => {
 
   function openZoom(filename: string, label: string) {
     setZoomImage({ src: assetUrl(filename), label });
-  }
-
-  function updateReviewedPair(index: number, field: 'number' | 'answer', value: string) {
-    setReviewedPairs(prev =>
-      prev.map((pair, pairIndex) => {
-        if (pairIndex !== index) return pair;
-        if (field === 'number') {
-          const next = Number(value);
-          return { ...pair, number: Number.isFinite(next) ? next : pair.number };
-        }
-        return { ...pair, answer: value.toUpperCase() };
-      })
-    );
   }
 
   function renderPagedQuestionCard(item: { question: DraftQuestion; index: number; reasons: string[] }) {
@@ -1370,7 +1343,7 @@ const EasyModeScreen: React.FC = () => {
     const contextTopic = String(question.topic_name || metadataDraft.topic || '').trim() || 'No topic';
 
     return (
-      <article key={question.question_id} className="easy-batch-question-card">
+      <article key={question.question_id} className="easy-batch-question-card easy-batch-question-card--compact">
         <div className="easy-batch-question-head">
           <div>
             <strong>Q{questionNumber}</strong>
@@ -1955,9 +1928,6 @@ const EasyModeScreen: React.FC = () => {
                     <button className="easy-btn primary" type="button" onClick={() => void parseAnswerKey()}>
                       Upload key
                     </button>
-                    <button className="easy-btn secondary" type="button" onClick={() => void applyReviewedAnswers()} disabled={!reviewedPairs.length || !reviewConfirmed}>
-                      Fill answers
-                    </button>
                   </div>
                 </div>
                 <div className="easy-scope-grid">
@@ -2013,39 +1983,12 @@ const EasyModeScreen: React.FC = () => {
                   </div>
                   <div className="easy-status-card">
                     <span>Answers</span>
-                    <strong>{reviewedPairs.length}</strong>
+                    <strong>{appliedAnswerCount}</strong>
                   </div>
                 </div>
-                {reviewedPairs.length > 0 ? (
-                  <div className="easy-answer-review easy-answer-review--collapsed">
-                    <div className="easy-answer-review-head">
-                      <strong>Review the parsed key, then apply</strong>
-                      <span>{reviewedPairs.length} answers</span>
-                    </div>
-                    <div className="easy-answer-table easy-answer-table--short">
-                      {reviewedPairs.map((pair, index) => (
-                        <div className="easy-answer-row" key={`${pair.number}-${index}`}>
-                          <input type="number" value={pair.number} onChange={e => updateReviewedPair(index, 'number', e.target.value)} />
-                          <select value={pair.answer} onChange={e => updateReviewedPair(index, 'answer', e.target.value)}>
-                            <option value="">Blank</option>
-                            {ANSWER_CHOICES.map(choice => (
-                              <option value={choice} key={`${pair.number}-${choice}`}>
-                                {choice}
-                              </option>
-                            ))}
-                          </select>
-                        </div>
-                      ))}
-                    </div>
-                    <label className="easy-checkbox">
-                      <input type="checkbox" checked={reviewConfirmed} onChange={e => setReviewConfirmed(e.target.checked)} />
-                      <span>I checked these answers and want to apply them.</span>
-                    </label>
-                  </div>
-                ) : null}
               </>
             ) : (
-              <p className="easy-muted">The answer-key extractor is hidden right now. Open this to upload, parse, review, and apply a key.</p>
+              <p className="easy-muted">The answer-key section is hidden right now. Open this to upload a key and apply it automatically.</p>
             )}
           </div>
         </section>
@@ -2587,7 +2530,7 @@ const EasyModeScreen: React.FC = () => {
                 </div>
               </div>
 
-              <div className="easy-batch-question-list">
+              <div className="easy-batch-question-list easy-batch-question-list--compact">
                 {visibleReviewItems.map(item => renderPagedQuestionCard(item))}
               </div>
             </div>

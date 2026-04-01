@@ -506,6 +506,9 @@ const EasyModeScreen: React.FC = () => {
   const [nowTs, setNowTs] = useState(Date.now());
   const [parseStartedAt, setParseStartedAt] = useState<number | null>(null);
   const [parseSeconds, setParseSeconds] = useState<number | null>(null);
+  const [liveQuestionText, setLiveQuestionText] = useState<Record<string, string>>({});
+  const [liveExplanationText, setLiveExplanationText] = useState<Record<string, string>>({});
+  const [liveOptionText, setLiveOptionText] = useState<Record<string, string>>({});
   const [parseConfig, setParseConfig] = useState({
     startPage: '1',
     maxPages: '1',
@@ -1166,7 +1169,7 @@ const EasyModeScreen: React.FC = () => {
   useEffect(() => {
     setParseConfig(prev => ({
       startPage: prev.startPage && prev.startPage !== '1' ? prev.startPage : String(answerKeyScope.startPage),
-      maxPages: String(answerKeyScope.maxPages),
+      maxPages: prev.maxPages && prev.maxPages !== '1' ? prev.maxPages : '1',
       minQuestion: String(answerKeyScope.minQuestion),
       maxQuestion: String(answerKeyScope.maxQuestion),
     }));
@@ -1326,6 +1329,22 @@ const EasyModeScreen: React.FC = () => {
     setZoomImage({ src: assetUrl(filename), label });
   }
 
+  function optionTextKey(questionId: string, letter: string) {
+    return `${questionId}:${letter}`;
+  }
+
+  function getPreviewQuestionText(question: DraftQuestion) {
+    return liveQuestionText[question.question_id] ?? normalizeQuestionText(question);
+  }
+
+  function getPreviewExplanationText(question: DraftQuestion) {
+    return liveExplanationText[question.question_id] ?? String(question.explanation_text || question.explanation || '').trim();
+  }
+
+  function getPreviewOptionText(questionId: string, option: DraftOption) {
+    return liveOptionText[optionTextKey(questionId, option.letter)] ?? option.text;
+  }
+
   function renderPagedQuestionCard(item: { question: DraftQuestion; index: number; reasons: string[] }) {
     const question = item.question;
     const questionNumber = normalizeQuestionNumber(question, item.index + 1);
@@ -1385,6 +1404,7 @@ const EasyModeScreen: React.FC = () => {
                 className="easy-question-text"
                 defaultValue={normalizeQuestionText(question)}
                 placeholder="Question text"
+                onChange={e => setLiveQuestionText(prev => ({ ...prev, [question.question_id]: e.target.value }))}
                 onBlur={e => {
                   const nextText = e.target.value;
                   if (nextText !== normalizeQuestionText(question)) {
@@ -1392,7 +1412,7 @@ const EasyModeScreen: React.FC = () => {
                   }
                 }}
               />
-              <MathPreview text={normalizeQuestionText(question)} />
+              <MathPreview text={getPreviewQuestionText(question)} />
             </label>
 
             <div className="easy-focus-field">
@@ -1446,6 +1466,12 @@ const EasyModeScreen: React.FC = () => {
                       type="text"
                       defaultValue={option.text}
                       placeholder={`Option ${normalizeOptionLetter(option.letter)}`}
+                      onChange={e =>
+                        setLiveOptionText(prev => ({
+                          ...prev,
+                          [optionTextKey(question.question_id, option.letter)]: e.target.value,
+                        }))
+                      }
                       onBlur={e => {
                         const nextOptions = options.map(itemOption =>
                           itemOption.letter === option.letter ? { ...itemOption, text: e.target.value } : itemOption
@@ -1454,7 +1480,7 @@ const EasyModeScreen: React.FC = () => {
                       }}
                     />
                   </label>
-                  <MathPreview text={option.text} />
+                  <MathPreview text={getPreviewOptionText(question.question_id, option)} />
                   {toImageList(option.image_urls || option.image_url).length > 0 ? (
                     <div className="easy-inline-gallery easy-inline-gallery--compact">
                       {toImageList(option.image_urls || option.image_url).map(image => (
@@ -1488,6 +1514,7 @@ const EasyModeScreen: React.FC = () => {
                 className="easy-question-text"
                 defaultValue={explanationText}
                 placeholder="Add explanation"
+                onChange={e => setLiveExplanationText(prev => ({ ...prev, [question.question_id]: e.target.value }))}
                 onBlur={e => {
                   const nextText = e.target.value;
                   if (nextText !== explanationText) {
@@ -1498,7 +1525,7 @@ const EasyModeScreen: React.FC = () => {
                   }
                 }}
               />
-              <MathPreview text={explanationText} />
+              <MathPreview text={getPreviewExplanationText(question)} />
             </label>
 
             {explanationImages.length > 0 ? (
@@ -2110,6 +2137,7 @@ const EasyModeScreen: React.FC = () => {
                     className="easy-question-text"
                     defaultValue={normalizeQuestionText(currentQuestion)}
                     placeholder="Question text"
+                    onChange={e => setLiveQuestionText(prev => ({ ...prev, [currentQuestion.question_id]: e.target.value }))}
                     onBlur={e => {
                       const nextText = e.target.value;
                       if (nextText !== normalizeQuestionText(currentQuestion)) {
@@ -2117,7 +2145,7 @@ const EasyModeScreen: React.FC = () => {
                       }
                     }}
                   />
-                  <MathPreview text={normalizeQuestionText(currentQuestion)} />
+                  <MathPreview text={getPreviewQuestionText(currentQuestion)} />
                 </label>
 
                 <div className="easy-focus-field">
@@ -2170,6 +2198,12 @@ const EasyModeScreen: React.FC = () => {
                           type="text"
                           defaultValue={option.text}
                           placeholder={`Option ${normalizeOptionLetter(option.letter)}`}
+                          onChange={e =>
+                            setLiveOptionText(prev => ({
+                              ...prev,
+                              [optionTextKey(currentQuestion.question_id, option.letter)]: e.target.value,
+                            }))
+                          }
                           onBlur={e => {
                             const nextOptions = currentOptions.map(item =>
                               item.letter === option.letter ? { ...item, text: e.target.value } : item
@@ -2178,7 +2212,7 @@ const EasyModeScreen: React.FC = () => {
                           }}
                         />
                       </label>
-                      <MathPreview text={option.text} />
+                      <MathPreview text={getPreviewOptionText(currentQuestion.question_id, option)} />
                       {toImageList(option.image_urls || option.image_url).length > 0 ? (
                         <div className="easy-inline-gallery easy-inline-gallery--compact">
                             {toImageList(option.image_urls || option.image_url).map(image => (
@@ -2212,6 +2246,7 @@ const EasyModeScreen: React.FC = () => {
                     className="easy-question-text"
                     defaultValue={currentExplanation}
                     placeholder="Add explanation"
+                    onChange={e => setLiveExplanationText(prev => ({ ...prev, [currentQuestion.question_id]: e.target.value }))}
                     onBlur={e => {
                       const nextText = e.target.value;
                       if (!currentQuestion || nextText === currentExplanation) return;
@@ -2221,7 +2256,7 @@ const EasyModeScreen: React.FC = () => {
                       });
                     }}
                   />
-                  <MathPreview text={currentExplanation} />
+                  <MathPreview text={getPreviewExplanationText(currentQuestion)} />
                 </label>
 
                 {currentExplanationImages.length > 0 ? (

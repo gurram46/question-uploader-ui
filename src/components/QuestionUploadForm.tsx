@@ -6,6 +6,8 @@ import { questionApi, difficultyApi, questionTypeApi } from '../services/api';
 import { useToast } from '../hooks/useToast';
 import { useQuestionForm } from '../context/QuestionFormContext';
 
+const MANUAL_METADATA_KEY = 'questionUploader.manualMetadata';
+
 const QuestionUploadForm: React.FC = () => {
   const { showSuccess, showError } = useToast();
   const { form, setForm, validationErrors, setValidationErrors, isLoading, setIsLoading } = useQuestionForm();
@@ -20,6 +22,37 @@ const QuestionUploadForm: React.FC = () => {
 
   // Question type selection sourced from backend
   const [questionTypes, setQuestionTypes] = useState<QuestionType[]>([]);
+
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem(MANUAL_METADATA_KEY);
+      if (!raw) return;
+      const parsed = JSON.parse(raw) as Partial<QuestionForm>;
+      setForm(prev => ({
+        ...prev,
+        subjectName: prev.subjectName || String(parsed.subjectName || ''),
+        chapterName: prev.chapterName || String(parsed.chapterName || ''),
+        topicName: prev.topicName || String(parsed.topicName || ''),
+      }));
+    } catch (_) {
+      // ignore restore errors
+    }
+  }, [setForm]);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(
+        MANUAL_METADATA_KEY,
+        JSON.stringify({
+          subjectName: form.subjectName,
+          chapterName: form.chapterName,
+          topicName: form.topicName,
+        })
+      );
+    } catch (_) {
+      // ignore storage errors
+    }
+  }, [form.subjectName, form.chapterName, form.topicName]);
 
   const handleInputChange = useCallback((field: keyof QuestionForm, value: string | number) => {
     setForm(prev => ({

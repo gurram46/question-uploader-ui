@@ -344,6 +344,33 @@ function patchOptionsWithAnswers(options: DraftOption[], answers: AnswerLetter[]
   });
 }
 
+function normalizedQuestionType(question: DraftQuestion): string {
+  return String(question.questionType || question.question_type || 'single_correct').trim().toLowerCase();
+}
+
+function nextAnswersForToggle(
+  question: DraftQuestion,
+  choice: AnswerLetter,
+  currentlyChecked: boolean
+): { answers: AnswerLetter[]; inferredType: string } {
+  const currentAnswers = serializeCorrectAnswers(question);
+  const qType = normalizedQuestionType(question);
+
+  if (qType === 'single_correct') {
+    const answers = currentlyChecked ? [] : [choice];
+    return { answers, inferredType: 'single_correct' };
+  }
+
+  const answers = currentlyChecked
+    ? currentAnswers.filter(answer => answer !== choice)
+    : (Array.from(new Set([...currentAnswers, choice])) as AnswerLetter[]);
+
+  return {
+    answers,
+    inferredType: answers.length > 1 ? 'multiple_correct' : 'single_correct',
+  };
+}
+
 function ensureEditorOptions(options: DraftOption[]): DraftOption[] {
   const byLetter = new Map<string, DraftOption>();
   options.forEach(option => {
@@ -1223,7 +1250,6 @@ const EasyModeScreen: React.FC = () => {
     ? normalizeQuestionNumber(currentQuestion, currentReviewItem ? currentReviewItem.index + 1 : 1)
     : 0;
   const currentOptions = currentQuestion && Array.isArray(currentQuestion.options) ? ensureEditorOptions(currentQuestion.options) : ensureEditorOptions([]);
-  const currentAnswers = currentQuestion ? serializeCorrectAnswers(currentQuestion) : [];
   const currentQuestionType = currentQuestion?.questionType || currentQuestion?.question_type || 'single_correct';
   const currentDifficultyType = currentQuestion?.difficulty_type || '';
   const currentLevel =
@@ -1448,11 +1474,11 @@ const EasyModeScreen: React.FC = () => {
                       checked={Boolean(option.is_correct)}
                       onChange={() => {
                         const choice = normalizeOptionLetter(option.letter) as AnswerLetter;
-                        const currentAnswers = serializeCorrectAnswers(question);
-                        const nextAnswers = option.is_correct
-                          ? currentAnswers.filter(answer => answer !== choice)
-                          : (Array.from(new Set([...currentAnswers, choice])) as AnswerLetter[]);
-                        const inferredType = nextAnswers.length > 1 ? 'multiple_correct' : 'single_correct';
+                        const { answers: nextAnswers, inferredType } = nextAnswersForToggle(
+                          question,
+                          choice,
+                          Boolean(option.is_correct)
+                        );
                         void patchQuestion(question.question_id, {
                           correct_option_letters: nextAnswers.join(','),
                           questionType: inferredType,
@@ -2181,10 +2207,11 @@ const EasyModeScreen: React.FC = () => {
                           checked={Boolean(option.is_correct)}
                           onChange={() => {
                             const choice = normalizeOptionLetter(option.letter) as AnswerLetter;
-                            const nextAnswers = option.is_correct
-                              ? currentAnswers.filter(answer => answer !== choice)
-                              : (Array.from(new Set([...currentAnswers, choice])) as AnswerLetter[]);
-                            const inferredType = nextAnswers.length > 1 ? 'multiple_correct' : 'single_correct';
+                            const { answers: nextAnswers, inferredType } = nextAnswersForToggle(
+                              currentQuestion,
+                              choice,
+                              Boolean(option.is_correct)
+                            );
                             void patchQuestion(currentQuestion.question_id, {
                               correct_option_letters: nextAnswers.join(','),
                               questionType: inferredType,
